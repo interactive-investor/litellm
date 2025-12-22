@@ -1003,13 +1003,11 @@ export function RequestViewer({ row, onOpenSettings }: { row: Row<LogEntry>; onO
           row={row}
           hasClientRequest={hasClientRequest || hasMessages}
           hasModelRequest={hasMessages}
-          hasModelResponse={hasResponse}
           hasClientResponse={hasClientResponse}
           hasError={hasError}
           errorInfo={errorInfo}
           getClientRequest={getClientRequest}
           getModelRequest={getModelRequest}
-          getModelResponse={() => formatData(row.original.response)}
           formattedResponse={formattedResponse}
         />
       </div>
