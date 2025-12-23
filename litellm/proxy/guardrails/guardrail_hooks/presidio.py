@@ -391,10 +391,14 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         """
         Remove detections whose matched text is explicitly allowed.
         """
+        print("[presidio] allow_list input:", allow_list)
+        print("[presidio] raw analyze_results:", analyze_results)
+
         if not allow_list or not isinstance(analyze_results, list):
             return analyze_results
 
         normalized_allow = {p.lower().strip() for p in allow_list if p}
+        print("[presidio] normalized_allow:", normalized_allow)
         if not normalized_allow:
             return analyze_results
 
@@ -402,22 +406,19 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         for item in analyze_results:
             start = item.get("start")
             end = item.get("end")
+            print("[presidio] inspecting item:", item)
             if (
                 isinstance(start, int)
                 and isinstance(end, int)
                 and 0 <= start < end <= len(text)
             ):
                 matched_phrase = text[start:end].lower().strip()
+                print("[presidio] matched_phrase:", matched_phrase)
                 if matched_phrase in normalized_allow:
                     continue
             filtered_results.append(item)
 
-        verbose_proxy_logger.debug(
-            "Presidio allow list filter: allow_list=%s raw=%s filtered=%s",
-            allow_list,
-            analyze_results,
-            filtered_results,
-        )
+        print("[presidio] filtered_results:", filtered_results)
 
         return filtered_results
 
