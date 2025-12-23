@@ -580,6 +580,14 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
                 if presidio_config and presidio_config.presidio_skip_system_developer_message is not None
                 else self.presidio_skip_system_developer_message
             )
+            verbose_proxy_logger.debug(
+                "[presidio] pre_call guardrail=%s skip_system_developer=%s presidio_config=%s",
+                getattr(self, "guardrail_name", None),
+                skip_system_developer,
+                getattr(presidio_config, "model_dump", lambda: presidio_config)()
+                if presidio_config
+                else None,
+            )
             messages = data.get("messages", None)
             if messages is None:
                 return data
@@ -589,7 +597,21 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
             ] = []  # Track (message_index, content_index) for each task
 
             for msg_idx, m in enumerate(messages):
-                if skip_system_developer and m.get("role") in ["system", "developer"]:
+                role = m.get("role")
+                verbose_proxy_logger.debug(
+                    "[presidio] pre_call guardrail=%s inspecting message_index=%s role=%s skip_system_developer=%s",
+                    getattr(self, "guardrail_name", None),
+                    msg_idx,
+                    role,
+                    skip_system_developer,
+                )
+                if skip_system_developer and role in ["system", "developer"]:
+                    verbose_proxy_logger.debug(
+                        "[presidio] pre_call guardrail=%s skipping message_index=%s role=%s",
+                        getattr(self, "guardrail_name", None),
+                        msg_idx,
+                        role,
+                    )
                     continue
                 content = m.get("content", None)
                 if content is None:
