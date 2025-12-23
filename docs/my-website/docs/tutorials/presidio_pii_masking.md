@@ -129,6 +129,7 @@ guardrails:
         - "Company Name"
         - "Clippy"
         - "Markdown"
+      presidio_skip_system_developer_message: true
       presidio_score_thresholds:  # optional confidence score thresholds for detections
         CREDIT_CARD: 0.8
         EMAIL_ADDRESS: 0.6

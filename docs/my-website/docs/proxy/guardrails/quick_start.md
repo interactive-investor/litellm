@@ -58,6 +58,7 @@ guardrails:
         - "Company Name"
         - "Clippy"
         - "Markdown"
+      presidio_skip_system_developer_message: true  # optional: skip scanning system/developer messages
       pii_entities_config:
         CREDIT_CARD: "MASK"
         EMAIL_ADDRESS: "MASK"

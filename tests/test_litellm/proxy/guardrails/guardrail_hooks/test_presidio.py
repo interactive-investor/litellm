@@ -1208,3 +1208,86 @@ def test_update_in_memory_applies_phrase_allow_list():
     guardrail.update_in_memory_litellm_params(params)
 
     assert guardrail.presidio_phrase_allow_list == ["one", "two"]
+
+
+@pytest.mark.asyncio
+async def test_pre_call_skips_system_and_developer(monkeypatch, mock_user_api_key, mock_cache):
+    """
+    When skip flag is set, system/developer messages are not scanned.
+    """
+    guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True,
+        presidio_skip_system_developer_message=True,
+    )
+
+    calls = []
+
+    async def mock_check_pii(text, output_parse_pii, presidio_config, request_data):
+        calls.append(text)
+        return f"masked-{text}"
+
+    guardrail.check_pii = mock_check_pii
+
+    data = {
+        "messages": [
+            {"role": "system", "content": "do not change"},
+            {"role": "developer", "content": "internal guidance"},
+            {"role": "user", "content": "4111-1111-1111-1111"},
+        ]
+    }
+
+    result = await guardrail.async_pre_call_hook(
+        user_api_key_dict=mock_user_api_key,
+        cache=mock_cache,
+        data=data,
+        call_type="completion",
+    )
+
+    # Only user content should be processed
+    assert calls == ["4111-1111-1111-1111"]
+    assert result["messages"][2]["content"] == "masked-4111-1111-1111-1111"
+    assert result["messages"][0]["content"] == "do not change"
+    assert result["messages"][1]["content"] == "internal guidance"
+
+
+@pytest.mark.asyncio
+async def test_pre_call_skip_can_be_set_per_request(mock_user_api_key, mock_cache):
+    """
+    Per-request config should override skip flag.
+    """
+    guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True,
+        presidio_skip_system_developer_message=False,
+    )
+
+    calls = []
+
+    async def mock_check_pii(text, output_parse_pii, presidio_config, request_data):
+        calls.append(text)
+        return f"masked-{text}"
+
+    guardrail.check_pii = mock_check_pii
+
+    data = {
+        "messages": [
+            {"role": "system", "content": "keep"},
+            {"role": "user", "content": "mask me"},
+        ],
+        "metadata": {
+            "guardrail_config": {
+                "presidio_skip_system_developer_message": True
+            }
+        },
+    }
+
+    result = await guardrail.async_pre_call_hook(
+        user_api_key_dict=mock_user_api_key,
+        cache=mock_cache,
+        data=data,
+        call_type="completion",
+    )
+
+    # skip system per request, so only user processed
+    assert calls == ["mask me"]
+    assert result["messages"][0]["content"] == "keep"
+    assert result["messages"][1]["content"] == "masked-mask me"

@@ -315,6 +315,10 @@ class PresidioConfigModel(PresidioPresidioConfigModelUserInterface):
             "Entities below the threshold are ignored."
         ),
     )
+    presidio_skip_system_developer_message: Optional[bool] = Field(
+        default=None,
+        description="If True, skip scanning system/developer messages in requests.",
+    )
     presidio_ad_hoc_recognizers: Optional[str] = Field(
         default=None,
         description="Path to a JSON file containing ad-hoc recognizers for Presidio",
@@ -762,6 +766,7 @@ class PresidioPerRequestConfig(BaseModel):
     language: Optional[str] = None
     entities: Optional[List[PiiEntityType]] = None
     presidio_phrase_allow_list: Optional[List[str]] = None
+    presidio_skip_system_developer_message: Optional[bool] = None
 
 
 class ApplyGuardrailRequest(BaseModel):

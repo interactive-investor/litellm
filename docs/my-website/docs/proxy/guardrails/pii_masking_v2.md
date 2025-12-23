@@ -266,6 +266,7 @@ guardrails:
         - "Company Name"
         - "Clippy"
         - "Markdown"
+      presidio_skip_system_developer_message: true
       presidio_score_thresholds: # Optional
         ALL: 0.7            # Default confidence threshold applied to all entities
         CREDIT_CARD: 0.8    # Override for credit cards
@@ -285,6 +286,7 @@ guardrails:
         - "Company Name"
         - "Clippy"
         - "Markdown"
+      presidio_skip_system_developer_message: true
       presidio_score_thresholds: # Optional
         CREDIT_CARD: 0.8  # Only keep credit card detections scoring 0.8+
       pii_entities_config:
