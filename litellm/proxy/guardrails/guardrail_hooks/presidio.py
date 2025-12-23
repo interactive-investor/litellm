@@ -107,6 +107,12 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         self.presidio_skip_system_developer_message: bool = (
             presidio_skip_system_developer_message or False
         )
+        verbose_proxy_logger.debug(
+            "[presidio:init] guardrail=%s allow_list=%s skip_system=%s",
+            getattr(self, "guardrail_name", None),
+            self.presidio_phrase_allow_list,
+            self.presidio_skip_system_developer_message,
+        )
         self.presidio_language = presidio_language or "en"
         if mock_testing is True:  # for testing purposes only
             return
@@ -484,6 +490,16 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
                 allow_list: List[str] = self.presidio_phrase_allow_list
                 if presidio_config and presidio_config.presidio_phrase_allow_list:
                     allow_list = presidio_config.presidio_phrase_allow_list
+
+                verbose_proxy_logger.debug(
+                    "[presidio] guardrail=%s allow_list_selected=%s self_allow_list=%s presidio_config_allow=%s",
+                    getattr(self, "guardrail_name", None),
+                    allow_list,
+                    self.presidio_phrase_allow_list,
+                    getattr(presidio_config, "presidio_phrase_allow_list", None)
+                    if presidio_config
+                    else None,
+                )
 
                 # Drop detections that are explicitly allowed
                 analyze_results = self.filter_analyze_results_by_allow_list(
