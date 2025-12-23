@@ -75,6 +75,7 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         apply_to_output: bool = False,
         presidio_ad_hoc_recognizers: Optional[str] = None,
         logging_only: Optional[bool] = None,
+        presidio_phrase_allow_list: Optional[List[str]] = None,
         pii_entities_config: Optional[
             Dict[Union[PiiEntityType, str], PiiAction]
         ] = None,
@@ -98,6 +99,7 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         self.pii_entities_config: Dict[Union[PiiEntityType, str], PiiAction] = (
             pii_entities_config or {}
         )
+        self.presidio_phrase_allow_list: List[str] = presidio_phrase_allow_list or []
         self.presidio_score_thresholds: Dict[Union[PiiEntityType, str], float] = (
             presidio_score_thresholds or {}
         )
@@ -376,6 +378,38 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
 
         return filtered_results
 
+    def filter_analyze_results_by_allow_list(
+        self,
+        analyze_results: Union[List[PresidioAnalyzeResponseItem], Dict],
+        text: str,
+        allow_list: List[str],
+    ) -> Union[List[PresidioAnalyzeResponseItem], Dict]:
+        """
+        Remove detections whose matched text is explicitly allowed.
+        """
+        if not allow_list or not isinstance(analyze_results, list):
+            return analyze_results
+
+        normalized_allow = {p.lower().strip() for p in allow_list if p}
+        if not normalized_allow:
+            return analyze_results
+
+        filtered_results: List[PresidioAnalyzeResponseItem] = []
+        for item in analyze_results:
+            start = item.get("start")
+            end = item.get("end")
+            if (
+                isinstance(start, int)
+                and isinstance(end, int)
+                and 0 <= start < end <= len(text)
+            ):
+                matched_phrase = text[start:end].lower().strip()
+                if matched_phrase in normalized_allow:
+                    continue
+            filtered_results.append(item)
+
+        return filtered_results
+
     def raise_exception_if_blocked_entities_detected(
         self, analyze_results: Union[List[PresidioAnalyzeResponseItem], Dict]
     ):
@@ -431,6 +465,17 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
                 )
 
                 verbose_proxy_logger.debug("analyze_results: %s", analyze_results)
+
+                allow_list: List[str] = self.presidio_phrase_allow_list
+                if presidio_config and presidio_config.presidio_phrase_allow_list:
+                    allow_list = presidio_config.presidio_phrase_allow_list
+
+                # Drop detections that are explicitly allowed
+                analyze_results = self.filter_analyze_results_by_allow_list(
+                    analyze_results=analyze_results,
+                    text=text,
+                    allow_list=allow_list,
+                )
 
                 # Apply score threshold filtering if configured
                 analyze_results = self.filter_analyze_results_by_score(
@@ -957,5 +1002,7 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
         super().update_in_memory_litellm_params(litellm_params)
         if litellm_params.pii_entities_config:
             self.pii_entities_config = litellm_params.pii_entities_config
+        if litellm_params.presidio_phrase_allow_list:
+            self.presidio_phrase_allow_list = litellm_params.presidio_phrase_allow_list
         if litellm_params.presidio_score_thresholds:
             self.presidio_score_thresholds = litellm_params.presidio_score_thresholds

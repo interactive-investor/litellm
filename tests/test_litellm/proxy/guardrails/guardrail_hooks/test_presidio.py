@@ -18,7 +18,12 @@ from litellm.proxy._types import UserAPIKeyAuth
 from litellm.proxy.guardrails.guardrail_hooks.presidio import (
     _OPTIONAL_PresidioPIIMasking,
 )
-from litellm.types.guardrails import LitellmParams, PiiAction, PiiEntityType
+from litellm.types.guardrails import (
+    LitellmParams,
+    PiiAction,
+    PiiEntityType,
+    PresidioPerRequestConfig,
+)
 from litellm.types.utils import Choices, Message, ModelResponse
 import litellm
 
@@ -1134,3 +1139,72 @@ def test_update_in_memory_applies_score_thresholds():
     guardrail.update_in_memory_litellm_params(params)
 
     assert guardrail.presidio_score_thresholds == {PiiEntityType.CREDIT_CARD: 0.85}
+
+
+def test_filter_analyze_results_by_allow_list_exact_match():
+    """
+    Allow-listed phrases should be removed from analyze results.
+    """
+    text = "my secret code is 1234"
+    analyze_results = [
+        {"entity_type": PiiEntityType.CREDIT_CARD, "score": 0.9, "start": 3, "end": 16}
+    ]
+    guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True, presidio_phrase_allow_list=["secret code"]
+    )
+
+    filtered = guardrail.filter_analyze_results_by_allow_list(
+        analyze_results=analyze_results,
+        text=text,
+        allow_list=guardrail.presidio_phrase_allow_list,
+    )
+
+    assert filtered == []
+
+
+@pytest.mark.asyncio
+async def test_check_pii_honors_per_request_allow_list(monkeypatch):
+    """
+    Per-request allow list should override the guardrail-level list.
+    """
+    text = "hello world"
+    guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True, presidio_phrase_allow_list=["other phrase"]
+    )
+
+    guardrail.analyze_text = AsyncMock(
+        return_value=[{"entity_type": PiiEntityType.PERSON, "start": 0, "end": 11}]
+    )
+    guardrail.anonymize_text = AsyncMock(return_value=text)
+
+    presidio_config = PresidioPerRequestConfig(presidio_phrase_allow_list=[text])
+
+    result = await guardrail.check_pii(
+        text=text,
+        output_parse_pii=False,
+        presidio_config=presidio_config,
+        request_data={},
+    )
+
+    # analyze_text should still be called, but anonymize should receive filtered results
+    guardrail.analyze_text.assert_awaited_once()
+    guardrail.anonymize_text.assert_awaited_once()
+    assert guardrail.anonymize_text.await_args.kwargs["analyze_results"] == []
+    assert result == text
+
+
+def test_update_in_memory_applies_phrase_allow_list():
+    """
+    update_in_memory_litellm_params should refresh phrase allow list.
+    """
+    guardrail = _OPTIONAL_PresidioPIIMasking(mock_testing=True)
+    assert guardrail.presidio_phrase_allow_list == []
+
+    params = LitellmParams(
+        guardrail="presidio",
+        mode="pre_call",
+        presidio_phrase_allow_list=["one", "two"],
+    )
+    guardrail.update_in_memory_litellm_params(params)
+
+    assert guardrail.presidio_phrase_allow_list == ["one", "two"]

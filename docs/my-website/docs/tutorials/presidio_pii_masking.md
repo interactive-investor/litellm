@@ -123,6 +123,12 @@ guardrails:
     litellm_params:
       guardrail: presidio
       mode: "pre_call"  # Run before LLM call
+      presidio_phrase_allow_list:  # optional phrases to ignore
+        # Example: allow phrases through <PERSON> detection
+        # Can also adapt the `presidio_score_thresholds` for sensitivity of detections
+        - "Company Name"
+        - "Clippy"
+        - "Markdown"
       presidio_score_thresholds:  # optional confidence score thresholds for detections
         CREDIT_CARD: 0.8
         EMAIL_ADDRESS: 0.6

@@ -295,7 +295,11 @@ class PresidioConfigModel(PresidioPresidioConfigModelUserInterface):
     pii_entities_config: Optional[Dict[Union[PiiEntityType, str], PiiAction]] = Field(
         default=None, description="Configuration for PII entity types and actions"
     )
-    presidio_filter_scope: Literal["input", "output", "both"] = Field(
+    presidio_phrase_allow_list: Optional[List[str]] = Field(
+        default=None,
+        description="List of phrases that should be ignored by Presidio (case-insensitive exact matches).",
+    )
+    presidio_filter_scope: Optional[Literal["input", "output", "both"]] = Field(
         default="both",
         description=(
             "Where to apply Presidio checks: 'input' runs on user → model traffic, "
@@ -757,6 +761,7 @@ class PresidioPerRequestConfig(BaseModel):
 
     language: Optional[str] = None
     entities: Optional[List[PiiEntityType]] = None
+    presidio_phrase_allow_list: Optional[List[str]] = None
 
 
 class ApplyGuardrailRequest(BaseModel):

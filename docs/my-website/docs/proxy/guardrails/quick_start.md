@@ -52,6 +52,12 @@ guardrails:
       guardrail: presidio
       mode: "pre_call"
       presidio_language: "en"
+      presidio_phrase_allow_list:  # optional phrases to ignore
+        # Example: allow phrases through <PERSON> detection
+        # Can also adapt the `presidio_score_thresholds` for sensitivity of detections
+        - "Company Name"
+        - "Clippy"
+        - "Markdown"
       pii_entities_config:
         CREDIT_CARD: "MASK"
         EMAIL_ADDRESS: "MASK"
