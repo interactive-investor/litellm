@@ -9,11 +9,13 @@ interface RequestResponsePanelProps {
   };
   hasClientRequest: string | boolean;
   hasModelRequest: string | boolean;
+  hasModelResponse: string | boolean;
   hasClientResponse: string | boolean;
   hasError: boolean;
   errorInfo: any;
   getClientRequest: () => any;
   getModelRequest: () => any;
+  getModelResponse: () => any;
   formattedResponse: () => any;
 }
 
@@ -21,11 +23,13 @@ export function RequestResponsePanel({
   row: _row,
   hasClientRequest,
   hasModelRequest,
+  hasModelResponse,
   hasClientResponse,
   hasError,
   errorInfo,
   getClientRequest,
   getModelRequest,
+  getModelResponse,
   formattedResponse,
 }: RequestResponsePanelProps) {
   const copyToClipboard = async (text: string) => {
@@ -106,9 +110,20 @@ export function RequestResponsePanel({
             rel="noreferrer"
           >
             <code>MAX_STRING_LENGTH_PROMPT_IN_DB</code>
-          </a>.
+          </a>
+          .
         </span>
       ),
+    },
+    {
+      key: "model-response",
+      title: "Response from model/endpoint",
+      hasData: hasModelResponse,
+      getData: getModelResponse,
+      copyTitle: "Copy response from model/endpoint",
+      successMessage: "Response from model/endpoint copied to clipboard",
+      errorMessage: "Failed to copy response from model/endpoint",
+      emptyText: "Response from model/endpoint not available",
     },
     {
       key: "client-response",
@@ -123,7 +138,7 @@ export function RequestResponsePanel({
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 w-full max-w-full overflow-hidden box-border">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full max-w-full overflow-hidden box-border">
       {panels.map((panel) => {
         const hasData = Boolean(panel.hasData);
         const data = hasData ? panel.getData() : null;
