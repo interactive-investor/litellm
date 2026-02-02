@@ -836,6 +836,13 @@ export function RequestViewer({ row, onOpenSettings }: { row: Row<LogEntry>; onO
     return formatData(row.original.response);
   };
 
+  const getModelResponse = () => {
+    if (hasError && errorInfo) {
+      return formattedResponse();
+    }
+    return formatData(row.original.response);
+  };
+
   // Extract vector store request metadata if available
   const hasVectorStoreData =
     metadata.vector_store_request_metadata &&
@@ -1009,7 +1016,7 @@ export function RequestViewer({ row, onOpenSettings }: { row: Row<LogEntry>; onO
           errorInfo={errorInfo}
           getClientRequest={getClientRequest}
           getModelRequest={getModelRequest}
-          getModelResponse={() => formatData(row.original.response)}
+          getModelResponse={getModelResponse}
           formattedResponse={formattedResponse}
         />
       </div>

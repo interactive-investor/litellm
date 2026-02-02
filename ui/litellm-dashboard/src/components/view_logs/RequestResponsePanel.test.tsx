@@ -218,6 +218,7 @@ describe("RequestResponsePanel", () => {
     const user = userEvent.setup();
     const mockGetClientRequest = vi.fn().mockReturnValue({ test: "request data" });
     const mockGetModelRequest = vi.fn().mockReturnValue({ model: "request data" });
+    const mockGetModelResponse = vi.fn().mockReturnValue({ model: "response data" });
     const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response data" });
     const mockWriteText = vi.fn().mockResolvedValue(undefined);
 
@@ -230,11 +231,13 @@ describe("RequestResponsePanel", () => {
         row={{ original: baseLogEntry }}
         hasClientRequest={true}
         hasModelRequest={true}
+        hasModelResponse={true}
         hasClientResponse={true}
         hasError={false}
         errorInfo={null}
         getClientRequest={mockGetClientRequest}
         getModelRequest={mockGetModelRequest}
+        getModelResponse={mockGetModelResponse}
         formattedResponse={mockFormattedResponse}
       />,
     );
@@ -253,9 +256,51 @@ describe("RequestResponsePanel", () => {
     expect(mockNotificationsManager.success).toHaveBeenCalledWith("Request to model/endpoint copied to clipboard");
   });
 
+  it("copies model response to clipboard when copy button is clicked", async () => {
+    const user = userEvent.setup();
+    const mockGetClientRequest = vi.fn().mockReturnValue({ test: "request data" });
+    const mockGetModelRequest = vi.fn().mockReturnValue({ model: "request data" });
+    const mockGetModelResponse = vi.fn().mockReturnValue({ model: "response data" });
+    const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response data" });
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
+
+    if (navigator.clipboard) {
+      vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
+    }
+
+    render(
+      <RequestResponsePanel
+        row={{ original: baseLogEntry }}
+        hasClientRequest={true}
+        hasModelRequest={true}
+        hasModelResponse={true}
+        hasClientResponse={true}
+        hasError={false}
+        errorInfo={null}
+        getClientRequest={mockGetClientRequest}
+        getModelRequest={mockGetModelRequest}
+        getModelResponse={mockGetModelResponse}
+        formattedResponse={mockFormattedResponse}
+      />,
+    );
+
+    const copyModelResponseButton = screen.getByTitle("Copy response from model/endpoint");
+    expect(copyModelResponseButton).not.toBeDisabled();
+
+    await act(async () => {
+      await user.click(copyModelResponseButton);
+    });
+
+    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ model: "response data" }, null, 2));
+    expect(mockNotificationsManager.success).toHaveBeenCalledWith(
+      "Response from model/endpoint copied to clipboard",
+    );
+  });
+
   it("shows guidance and disables copy when model request data is missing", () => {
     const mockGetClientRequest = vi.fn().mockReturnValue({ test: "request data" });
     const mockGetModelRequest = vi.fn();
+    const mockGetModelResponse = vi.fn().mockReturnValue({ model: "response data" });
     const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response" });
 
     render(
@@ -263,11 +308,13 @@ describe("RequestResponsePanel", () => {
         row={{ original: baseLogEntry }}
         hasClientRequest={true}
         hasModelRequest={false}
+        hasModelResponse={true}
         hasClientResponse={true}
         hasError={false}
         errorInfo={null}
         getClientRequest={mockGetClientRequest}
         getModelRequest={mockGetModelRequest}
+        getModelResponse={mockGetModelResponse}
         formattedResponse={mockFormattedResponse}
       />,
     );

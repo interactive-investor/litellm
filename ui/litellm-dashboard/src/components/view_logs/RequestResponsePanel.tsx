@@ -91,7 +91,29 @@ export function RequestResponsePanel({
       copyTitle: "Copy request to model/endpoint",
       successMessage: "Request to model/endpoint copied to clipboard",
       errorMessage: "Failed to copy request to model/endpoint",
-      emptyText: "Request to model/endpoint not available",
+      emptyText: (
+        <span className="block whitespace-normal break-words text-left max-w-prose mx-auto">
+          Request not available. Enable{" "}
+          <a
+            className="text-blue-600 underline"
+            href="https://docs.litellm.ai/docs/proxy/config_settings#store_prompts_in_spend_logs"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <code>store_prompts_in_spend_logs</code>
+          </a>{" "}
+          to capture and display model requests. If content is truncated, raise{" "}
+          <a
+            className="text-blue-600 underline"
+            href="https://docs.litellm.ai/docs/proxy/config_settings#store_prompts_in_spend_logs#MAX_STRING_LENGTH_PROMPT_IN_DB"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <code>MAX_STRING_LENGTH_PROMPT_IN_DB</code>
+          </a>
+          .
+        </span>
+      ),
     },
     {
       key: "model-response",
