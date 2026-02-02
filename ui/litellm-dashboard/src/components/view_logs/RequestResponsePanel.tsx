@@ -138,7 +138,7 @@ export function RequestResponsePanel({
   ];
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-full overflow-hidden box-border">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full max-w-full overflow-hidden box-border">
       {panels.map((panel) => {
         const hasData = Boolean(panel.hasData);
         const data = hasData ? panel.getData() : null;
