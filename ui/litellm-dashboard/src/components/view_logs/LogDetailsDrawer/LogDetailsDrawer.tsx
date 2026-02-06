@@ -102,8 +102,16 @@ export function LogDetailsDrawer({
   const statusColor = metadata.status === "failure" ? ("error" as const) : ("success" as const);
   const environment = metadata?.user_api_key_team_alias || "default";
 
-  const getRawRequest = () => {
+  const getClientRequest = () => {
     return formatData(logEntry.proxy_server_request || logEntry.messages);
+  };
+
+  const getModelRequest = () => {
+    const messages = formatData(logEntry.messages);
+    if (messages && Object.keys(messages).length > 0) {
+      return messages;
+    }
+    return messages;
   };
 
   const getFormattedResponse = () => {
@@ -119,6 +127,22 @@ export function LogDetailsDrawer({
     }
     return formatData(logEntry.response);
   };
+
+  const getModelResponse = () => {
+    return formatData(logEntry.response);
+  };
+
+  const getClientResponse = () => {
+    return getFormattedResponse();
+  };
+
+  const hasClientRequest =
+    !!logEntry.proxy_server_request &&
+    Object.keys(formatData(logEntry.proxy_server_request) || {}).length > 0;
+  const modelRequestData = getModelRequest();
+  const hasModelRequest = !!modelRequestData && Object.keys(modelRequestData || {}).length > 0;
+  const hasModelResponse = hasResponse;
+  const hasClientResponse = hasResponse || hasError;
 
   return (
     <Drawer
@@ -205,9 +229,14 @@ export function LogDetailsDrawer({
 
         {/* Request/Response JSON - Collapsible */}
         <RequestResponseSection
-          hasResponse={hasResponse}
-          getRawRequest={getRawRequest}
-          getFormattedResponse={getFormattedResponse}
+          hasClientRequest={hasClientRequest || hasMessages}
+          hasModelRequest={hasModelRequest}
+          hasModelResponse={hasModelResponse}
+          hasClientResponse={hasClientResponse}
+          getClientRequest={getClientRequest}
+          getModelRequest={getModelRequest}
+          getModelResponse={getModelResponse}
+          getClientResponse={getClientResponse}
           logEntry={logEntry}
         />
 
@@ -338,24 +367,91 @@ function MetricsSection({ logEntry, metadata }: { logEntry: LogEntry; metadata: 
 }
 
 interface RequestResponseSectionProps {
-  hasResponse: boolean;
-  getRawRequest: () => any;
-  getFormattedResponse: () => any;
+  hasClientRequest: boolean;
+  hasModelRequest: boolean;
+  hasModelResponse: boolean;
+  hasClientResponse: boolean;
+  getClientRequest: () => any;
+  getModelRequest: () => any;
+  getModelResponse: () => any;
+  getClientResponse: () => any;
   logEntry: LogEntry;
 }
 
 function RequestResponseSection({
-  hasResponse,
-  getRawRequest,
-  getFormattedResponse,
+  hasClientRequest,
+  hasModelRequest,
+  hasModelResponse,
+  hasClientResponse,
+  getClientRequest,
+  getModelRequest,
+  getModelResponse,
+  getClientResponse,
   logEntry,
 }: RequestResponseSectionProps) {
-  const [activeTab, setActiveTab] = useState<typeof TAB_REQUEST | typeof TAB_RESPONSE>(TAB_REQUEST);
+  const [activeTab, setActiveTab] = useState<"client-request" | "model-request" | "model-response" | "client-response">(
+    "client-request",
+  );
   const [viewMode, setViewMode] = useState<'pretty' | 'json'>('pretty');
 
+  const modelRequestEmpty = (
+    <span className="block whitespace-normal break-words text-left max-w-prose mx-auto">
+      Request not available. Enable{" "}
+      <a
+        className="text-blue-600 underline"
+        href="https://docs.litellm.ai/docs/proxy/config_settings#store_prompts_in_spend_logs"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <code>store_prompts_in_spend_logs</code>
+      </a>{" "}
+      to capture and display model requests. If content is truncated, raise{" "}
+      <a
+        className="text-blue-600 underline"
+        href="https://docs.litellm.ai/docs/proxy/config_settings#store_prompts_in_spend_logs#MAX_STRING_LENGTH_PROMPT_IN_DB"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <code>MAX_STRING_LENGTH_PROMPT_IN_DB</code>
+      </a>
+      .
+    </span>
+  );
+
+  const tabs = [
+    {
+      key: "client-request",
+      label: "Request from client",
+      hasData: hasClientRequest,
+      getData: getClientRequest,
+    },
+    {
+      key: "model-request",
+      label: "Request to model",
+      hasData: hasModelRequest,
+      getData: getModelRequest,
+      emptyContent: modelRequestEmpty,
+    },
+    {
+      key: "model-response",
+      label: "Response from model",
+      hasData: hasModelResponse,
+      getData: getModelResponse,
+    },
+    {
+      key: "client-response",
+      label: "Response to client",
+      hasData: hasClientResponse,
+      getData: getClientResponse,
+    },
+  ];
+
   const getCopyText = () => {
-    const data = activeTab === TAB_REQUEST ? getRawRequest() : getFormattedResponse();
-    return JSON.stringify(data, null, 2);
+    const active = tabs.find((tab) => tab.key === activeTab);
+    if (!active || !active.hasData) {
+      return "{}";
+    }
+    return JSON.stringify(active.getData(), null, 2);
   };
 
   // Calculate input and output costs
@@ -404,8 +500,8 @@ function RequestResponseSection({
               <div>
                 {viewMode === 'pretty' ? (
                   <PrettyMessagesView
-                    request={getRawRequest()}
-                    response={getFormattedResponse()}
+                    request={getClientRequest()}
+                    response={getClientResponse()}
                     metrics={{
                       prompt_tokens: promptTokens,
                       completion_tokens: completionTokens,
@@ -416,42 +512,33 @@ function RequestResponseSection({
                 ) : (
                   <Tabs
                     activeKey={activeTab}
-                    onChange={(key) => setActiveTab(key as typeof TAB_REQUEST | typeof TAB_RESPONSE)}
+                    onChange={(key) =>
+                      setActiveTab(key as "client-request" | "model-request" | "model-response" | "client-response")
+                    }
                     tabBarExtraContent={
                       <Text 
                         copyable={{ 
                           text: getCopyText(),
                           tooltips: ["Copy JSON", "Copied!"]
                         }}
-                        disabled={activeTab === TAB_RESPONSE && !hasResponse}
+                        disabled={!tabs.find((tab) => tab.key === activeTab)?.hasData}
                       />
                     }
-                    items={[
-                      {
-                        key: TAB_REQUEST,
-                        label: "Request",
-                        children: (
-                          <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
-                            <JsonViewer data={getRawRequest()} mode="formatted" />
-                          </div>
-                        ),
-                      },
-                      {
-                        key: TAB_RESPONSE,
-                        label: "Response",
-                        children: (
-                          <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
-                            {hasResponse ? (
-                              <JsonViewer data={getFormattedResponse()} mode="formatted" />
-                            ) : (
-                              <div style={{ textAlign: "center", padding: 20, color: "#999", fontStyle: "italic" }}>
-                                Response data not available
-                              </div>
-                            )}
-                          </div>
-                        ),
-                      },
-                    ]}
+                    items={tabs.map((tab) => ({
+                      key: tab.key,
+                      label: tab.label,
+                      children: (
+                        <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
+                          {tab.hasData ? (
+                            <JsonViewer data={tab.getData()} mode="formatted" />
+                          ) : (
+                            <div style={{ textAlign: "center", padding: 20, color: "#999", fontStyle: "italic" }}>
+                              {tab.emptyContent ?? "Data not available"}
+                            </div>
+                          )}
+                        </div>
+                      ),
+                    }))}
                   />
                 )}
               </div>
@@ -504,4 +591,3 @@ function MetadataSection({ metadata }: { metadata: Record<string, any> }) {
     </div>
   );
 }
-
