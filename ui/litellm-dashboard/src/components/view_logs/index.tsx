@@ -739,15 +739,30 @@ export function RequestViewer({ row }: { row: Row<LogEntry> }) {
     return input;
   };
 
-  // New helper function to get raw request
-  const getRawRequest = () => {
-    // First check if proxy_server_request exists in metadata
-    if (row.original?.proxy_server_request) {
-      return formatData(row.original.proxy_server_request);
+  const hasData = (input: any) => {
+    if (!input) {
+      return false;
     }
-    // Fall back to messages if proxy_server_request is empty
-    return formatData(row.original.messages);
+    if (Array.isArray(input) || typeof input === "string") {
+      return input.length > 0;
+    }
+    if (typeof input === "object") {
+      return Object.keys(input).length > 0;
+    }
+    return true;
   };
+
+  const proxyServerRequest = formatData(row.original.proxy_server_request);
+  const modelRequest = formatData(row.original.messages);
+
+  const getClientRequest = () => {
+    if (hasData(proxyServerRequest)) {
+      return proxyServerRequest;
+    }
+    return modelRequest;
+  };
+
+  const getModelRequest = () => modelRequest;
 
   // Extract error information from metadata if available
   const metadata = row.original.metadata || {};
@@ -755,13 +770,11 @@ export function RequestViewer({ row }: { row: Row<LogEntry> }) {
   const errorInfo = hasError ? metadata.error_information : null;
 
   // Check if request/response data is missing
-  const hasMessages =
-    row.original.messages &&
-    (Array.isArray(row.original.messages)
-      ? row.original.messages.length > 0
-      : Object.keys(row.original.messages).length > 0);
-  const hasResponse = row.original.response && Object.keys(formatData(row.original.response)).length > 0;
-  const missingData = !hasMessages && !hasResponse && !hasError;
+  const hasMessages = hasData(modelRequest);
+  const hasResponse = hasData(formatData(row.original.response));
+  const hasClientRequest = hasData(proxyServerRequest);
+  const hasClientResponse = hasResponse || hasError;
+  const missingData = !hasMessages && !hasResponse && !hasClientRequest;
 
   // Format the response with error details if present
   const formattedResponse = () => {
@@ -777,6 +790,8 @@ export function RequestViewer({ row }: { row: Row<LogEntry> }) {
     }
     return formatData(row.original.response);
   };
+
+  const getModelResponse = () => formatData(row.original.response);
 
   // Extract vector store request metadata if available
   const hasVectorStoreData =
@@ -959,11 +974,15 @@ export function RequestViewer({ row }: { row: Row<LogEntry> }) {
       <div className="w-full max-w-full overflow-hidden">
         <RequestResponsePanel
           row={row}
-          hasMessages={hasMessages}
-          hasResponse={hasResponse}
+          hasClientRequest={hasClientRequest || hasMessages}
+          hasModelRequest={hasMessages}
+          hasModelResponse={hasResponse}
+          hasClientResponse={hasClientResponse}
           hasError={hasError}
           errorInfo={errorInfo}
-          getRawRequest={getRawRequest}
+          getClientRequest={getClientRequest}
+          getModelRequest={getModelRequest}
+          getModelResponse={getModelResponse}
           formattedResponse={formattedResponse}
         />
       </div>

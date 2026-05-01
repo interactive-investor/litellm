@@ -7,21 +7,29 @@ interface RequestResponsePanelProps {
   row: {
     original: LogEntry;
   };
-  hasMessages: string | boolean;
-  hasResponse: string | boolean;
+  hasClientRequest: string | boolean;
+  hasModelRequest: string | boolean;
+  hasModelResponse: string | boolean;
+  hasClientResponse: string | boolean;
   hasError: boolean;
-  errorInfo: any;
-  getRawRequest: () => any;
+  errorInfo: { error_code?: string | number } | null;
+  getClientRequest: () => any;
+  getModelRequest: () => any;
+  getModelResponse: () => any;
   formattedResponse: () => any;
 }
 
 export function RequestResponsePanel({
-  row,
-  hasMessages,
-  hasResponse,
+  row: _row,
+  hasClientRequest,
+  hasModelRequest,
+  hasModelResponse,
+  hasClientResponse,
   hasError,
   errorInfo,
-  getRawRequest,
+  getClientRequest,
+  getModelRequest,
+  getModelResponse,
   formattedResponse,
 }: RequestResponsePanelProps) {
   const copyToClipboard = async (text: string) => {
@@ -54,93 +62,123 @@ export function RequestResponsePanel({
     }
   };
 
-  const handleCopyRequest = async () => {
-    const success = await copyToClipboard(JSON.stringify(getRawRequest(), null, 2));
-    if (success) {
-      NotificationsManager.success("Request copied to clipboard");
-    } else {
-      NotificationsManager.fromBackend("Failed to copy request");
-    }
-  };
+  const modelRequestUnavailableText = (
+    <span className="block whitespace-normal break-words text-left max-w-prose mx-auto">
+      Request not available. Enable{" "}
+      <a
+        className="text-blue-600 underline"
+        href="https://docs.litellm.ai/docs/proxy/config_settings#store_prompts_in_spend_logs"
+        target="_blank"
+        rel="noreferrer"
+      >
+        <code>store_prompts_in_spend_logs</code>
+      </a>{" "}
+      to capture and display model requests. If content is truncated, raise{" "}
+      <code>MAX_STRING_LENGTH_PROMPT_IN_DB</code>.
+    </span>
+  );
 
-  const handleCopyResponse = async () => {
-    const success = await copyToClipboard(JSON.stringify(formattedResponse(), null, 2));
-    if (success) {
-      NotificationsManager.success("Response copied to clipboard");
-    } else {
-      NotificationsManager.fromBackend("Failed to copy response");
-    }
-  };
+  const panels = [
+    {
+      key: "client-request",
+      title: "Request from client",
+      hasData: hasClientRequest,
+      getData: getClientRequest,
+      copyTitle: "Copy request from client",
+      successMessage: "Request from client copied to clipboard",
+      errorMessage: "Failed to copy request from client",
+      emptyText: "Request from client not available",
+    },
+    {
+      key: "model-request",
+      title: "Request to model/endpoint",
+      hasData: hasModelRequest,
+      getData: getModelRequest,
+      copyTitle: "Copy request to model/endpoint",
+      successMessage: "Request to model/endpoint copied to clipboard",
+      errorMessage: "Failed to copy request to model/endpoint",
+      emptyText: modelRequestUnavailableText,
+    },
+    {
+      key: "model-response",
+      title: "Response from model/endpoint",
+      hasData: hasModelResponse,
+      getData: getModelResponse,
+      copyTitle: "Copy response from model/endpoint",
+      successMessage: "Response from model/endpoint copied to clipboard",
+      errorMessage: "Failed to copy response from model/endpoint",
+      emptyText: "Response from model/endpoint not available",
+    },
+    {
+      key: "client-response",
+      title: "Response to client",
+      hasData: hasClientResponse,
+      getData: formattedResponse,
+      copyTitle: "Copy response to client",
+      successMessage: "Response to client copied to clipboard",
+      errorMessage: "Failed to copy response to client",
+      emptyText: "Response to client not available",
+    },
+  ];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full max-w-full overflow-hidden box-border">
-      {/* Request Side */}
-      <div className="bg-white rounded-lg shadow w-full max-w-full overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h3 className="text-lg font-medium">Request</h3>
-          <button onClick={handleCopyRequest} className="p-1 hover:bg-gray-200 rounded" title="Copy request">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 overflow-auto max-h-96 w-full max-w-full box-border">
-          <div className="[&_[role='tree']]:bg-white [&_[role='tree']]:text-slate-900">
-            <JsonView data={getRawRequest()} style={defaultStyles} clickToExpandNode={true} />
-          </div>
-        </div>
-      </div>
+      {panels.map((panel) => {
+        const hasData = Boolean(panel.hasData);
+        const panelData = hasData ? panel.getData() : null;
 
-      {/* Response Side */}
-      <div className="bg-white rounded-lg shadow w-full max-w-full overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h3 className="text-lg font-medium">
-            Response
-            {hasError && <span className="ml-2 text-sm text-red-600">• HTTP code {errorInfo?.error_code || 400}</span>}
-          </h3>
-          <button
-            onClick={handleCopyResponse}
-            className="p-1 hover:bg-gray-200 rounded"
-            title="Copy response"
-            disabled={!hasResponse && !hasError}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-          </button>
-        </div>
-        <div className="p-4 overflow-auto max-h-96 w-full max-w-full box-border">
-          {hasResponse || hasError ? (
-            <div className="[&_[role='tree']]:bg-white [&_[role='tree']]:text-slate-900">
-              <JsonView data={formattedResponse()} style={defaultStyles} clickToExpandNode />
+        const handleCopy = async () => {
+          const success = await copyToClipboard(JSON.stringify(panel.getData(), null, 2));
+          if (success) {
+            NotificationsManager.success(panel.successMessage);
+          } else {
+            NotificationsManager.fromBackend(panel.errorMessage);
+          }
+        };
+
+        return (
+          <div key={panel.key} className="bg-white rounded-lg shadow w-full max-w-full overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-medium">
+                {panel.title}
+                {panel.key === "client-response" && hasError && (
+                  <span className="ml-2 text-sm text-red-600">• HTTP code {errorInfo?.error_code || 400}</span>
+                )}
+              </h3>
+              <button
+                onClick={handleCopy}
+                className="p-1 hover:bg-gray-200 rounded"
+                title={panel.copyTitle}
+                disabled={!hasData}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+              </button>
             </div>
-          ) : (
-            <div className="text-gray-500 text-sm italic text-center py-4">Response data not available</div>
-          )}
-        </div>
-      </div>
+            <div className="p-4 overflow-auto max-h-96 w-full max-w-full box-border">
+              {hasData ? (
+                <div className="[&_[role='tree']]:bg-white [&_[role='tree']]:text-slate-900">
+                  <JsonView data={panelData} style={defaultStyles} clickToExpandNode={true} />
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm italic text-center py-4">{panel.emptyText}</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

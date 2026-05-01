@@ -53,213 +53,123 @@ describe("RequestResponsePanel", () => {
     });
   });
 
-  it("should render the component with request and response panels", () => {
-    const mockGetRawRequest = vi.fn().mockReturnValue({ test: "request" });
-    const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response" });
-
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={true}
-        hasResponse={true}
-        hasError={false}
-        errorInfo={null}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-
-    expect(screen.getByText("Request")).toBeInTheDocument();
-    expect(screen.getByText("Response")).toBeInTheDocument();
-  });
-
-  it("should copy request to clipboard when copy button is clicked", async () => {
-    const user = userEvent.setup();
-    const mockGetRawRequest = vi.fn().mockReturnValue({ test: "request data" });
-    const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response" });
-    const mockWriteText = vi.fn().mockResolvedValue(undefined);
-
-    if (navigator.clipboard) {
-      vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
-    } else {
-      Object.defineProperty(navigator, "clipboard", {
-        value: {
-          writeText: mockWriteText,
-        },
-        writable: true,
-        configurable: true,
-      });
-    }
-
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={true}
-        hasResponse={true}
-        hasError={false}
-        errorInfo={null}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-
-    const copyButtons = screen.getAllByRole("button");
-    const copyRequestButton = copyButtons.find((button) => button.getAttribute("title") === "Copy request");
-
-    expect(copyRequestButton).toBeInTheDocument();
-
-    await act(async () => {
-      await user.click(copyRequestButton!);
-    });
-
-    expect(mockGetRawRequest).toHaveBeenCalled();
-    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ test: "request data" }, null, 2));
-    expect(mockNotificationsManager.success).toHaveBeenCalledWith("Request copied to clipboard");
-  });
-
-  it("should copy response to clipboard when copy button is clicked", async () => {
-    const user = userEvent.setup();
-    const mockGetRawRequest = vi.fn().mockReturnValue({ test: "request" });
-    const mockFormattedResponse = vi.fn().mockReturnValue({ test: "response data" });
-    const mockWriteText = vi.fn().mockResolvedValue(undefined);
-
-    if (navigator.clipboard) {
-      vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
-    } else {
-      Object.defineProperty(navigator, "clipboard", {
-        value: {
-          writeText: mockWriteText,
-        },
-        writable: true,
-        configurable: true,
-      });
-    }
-
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={true}
-        hasResponse={true}
-        hasError={false}
-        errorInfo={null}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-
-    const copyButtons = screen.getAllByRole("button");
-    const copyResponseButton = copyButtons.find((button) => button.getAttribute("title") === "Copy response");
-
-    expect(copyResponseButton).toBeInTheDocument();
-    expect(copyResponseButton).not.toBeDisabled();
-
-    await act(async () => {
-      await user.click(copyResponseButton!);
-    });
-
-    expect(mockFormattedResponse).toHaveBeenCalled();
-    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ test: "response data" }, null, 2));
-    expect(mockNotificationsManager.success).toHaveBeenCalledWith("Response copied to clipboard");
-  });
-
-  it("should call formattedResponse for the response panel and not getRawRequest", () => {
-    const mockGetRawRequest = vi.fn().mockReturnValue({ requestData: "this should not appear in response" });
-    const mockFormattedResponse = vi.fn().mockReturnValue({ responseData: "this should appear in response" });
-
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={true}
-        hasResponse={true}
-        hasError={false}
-        errorInfo={null}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-
-    expect(mockFormattedResponse).toHaveBeenCalled();
-    expect(mockGetRawRequest).toHaveBeenCalled();
-    
-    const formattedResponseCallCount = mockFormattedResponse.mock.calls.length;
-    expect(formattedResponseCallCount).toBeGreaterThanOrEqual(1);
-    
-    const responseData = mockFormattedResponse.mock.results[0].value;
-    expect(responseData).toEqual({ responseData: "this should appear in response" });
-    expect(responseData).not.toEqual({ requestData: "this should not appear in response" });
-  });
-
-  it("should show error response data when hasError is true and hasResponse is false", () => {
-    const failedLogEntry: LogEntry = {
-      ...baseLogEntry,
-      messages: [],
-      response: {},
-      metadata: {
-        status: "failure",
-        error_information: {
-          error_message: "Model not found",
-          error_class: "NotFoundError",
-          error_code: 404,
-        },
-        additional_usage_values: {
-          cache_read_input_tokens: 0,
-          cache_creation_input_tokens: 0,
-        },
-      },
+  const renderPanel = (overrides?: Partial<React.ComponentProps<typeof RequestResponsePanel>>) => {
+    const props: React.ComponentProps<typeof RequestResponsePanel> = {
+      row: { original: baseLogEntry },
+      hasClientRequest: true,
+      hasModelRequest: true,
+      hasModelResponse: true,
+      hasClientResponse: true,
+      hasError: false,
+      errorInfo: null,
+      getClientRequest: vi.fn().mockReturnValue({ client: "request" }),
+      getModelRequest: vi.fn().mockReturnValue({ model: "request" }),
+      getModelResponse: vi.fn().mockReturnValue({ model: "response" }),
+      formattedResponse: vi.fn().mockReturnValue({ client: "response" }),
+      ...overrides,
     };
-    const errorResponse = { error: { message: "Model not found", type: "NotFoundError", code: 404, param: null } };
-    const mockGetRawRequest = vi.fn().mockReturnValue({ messages: [] });
-    const mockFormattedResponse = vi.fn().mockReturnValue(errorResponse);
-    render(
-      <RequestResponsePanel
-        row={{ original: failedLogEntry }}
-        hasMessages={false}
-        hasResponse={false}
-        hasError={true}
-        errorInfo={failedLogEntry.metadata.error_information}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-    expect(screen.queryByText("Response data not available")).not.toBeInTheDocument();
-    expect(mockFormattedResponse).toHaveBeenCalled();
-    const copyButtons = screen.getAllByRole("button");
-    const copyResponseButton = copyButtons.find((button) => button.getAttribute("title") === "Copy response");
-    expect(copyResponseButton).not.toBeDisabled();
+
+    render(<RequestResponsePanel {...props} />);
+    return props;
+  };
+
+  it("should render all four request and response panels", () => {
+    renderPanel();
+
+    expect(screen.getByText("Request from client")).toBeInTheDocument();
+    expect(screen.getByText("Request to model/endpoint")).toBeInTheDocument();
+    expect(screen.getByText("Response from model/endpoint")).toBeInTheDocument();
+    expect(screen.getByText("Response to client")).toBeInTheDocument();
   });
 
-  it("should show Response data not available when hasResponse and hasError are both false", () => {
-    const mockGetRawRequest = vi.fn().mockReturnValue({ messages: [] });
-    const mockFormattedResponse = vi.fn().mockReturnValue({});
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={false}
-        hasResponse={false}
-        hasError={false}
-        errorInfo={null}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
-    expect(screen.getByText("Response data not available")).toBeInTheDocument();
+  it("should copy client request to the clipboard", async () => {
+    const user = userEvent.setup();
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
+
+    const props = renderPanel({
+      getClientRequest: vi.fn().mockReturnValue({ client: "request data" }),
+    });
+
+    await act(async () => {
+      await user.click(screen.getByTitle("Copy request from client"));
+    });
+
+    expect(props.getClientRequest).toHaveBeenCalled();
+    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ client: "request data" }, null, 2));
+    expect(mockNotificationsManager.success).toHaveBeenCalledWith("Request from client copied to clipboard");
   });
 
-  it("should show error code in response header when hasError is true", () => {
-    const errorInfo = { error_message: "Rate limit exceeded", error_class: "RateLimitError", error_code: 429 };
-    const mockGetRawRequest = vi.fn().mockReturnValue({ messages: [] });
-    const mockFormattedResponse = vi.fn().mockReturnValue({ error: { message: "Rate limit exceeded", type: "RateLimitError", code: 429, param: null } });
-    render(
-      <RequestResponsePanel
-        row={{ original: baseLogEntry }}
-        hasMessages={false}
-        hasResponse={false}
-        hasError={true}
-        errorInfo={errorInfo}
-        getRawRequest={mockGetRawRequest}
-        formattedResponse={mockFormattedResponse}
-      />,
-    );
+  it("should copy model response to the clipboard", async () => {
+    const user = userEvent.setup();
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
+
+    const props = renderPanel({
+      getModelResponse: vi.fn().mockReturnValue({ model: "response data" }),
+    });
+
+    await act(async () => {
+      await user.click(screen.getByTitle("Copy response from model/endpoint"));
+    });
+
+    expect(props.getModelResponse).toHaveBeenCalled();
+    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ model: "response data" }, null, 2));
+    expect(mockNotificationsManager.success).toHaveBeenCalledWith("Response from model/endpoint copied to clipboard");
+  });
+
+  it("should use the formatted client response for the client response panel", async () => {
+    const user = userEvent.setup();
+    const mockWriteText = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementation(mockWriteText);
+
+    const props = renderPanel({
+      getClientRequest: vi.fn().mockReturnValue({ shouldNot: "appear" }),
+      formattedResponse: vi.fn().mockReturnValue({ client: "response data" }),
+    });
+
+    await act(async () => {
+      await user.click(screen.getByTitle("Copy response to client"));
+    });
+
+    expect(props.formattedResponse).toHaveBeenCalled();
+    expect(mockWriteText).toHaveBeenCalledWith(JSON.stringify({ client: "response data" }, null, 2));
+    expect(mockNotificationsManager.success).toHaveBeenCalledWith("Response to client copied to clipboard");
+  });
+
+  it("should show the error code on the client response panel and keep copy enabled for errors", () => {
+    renderPanel({
+      hasModelResponse: false,
+      hasClientResponse: true,
+      hasError: true,
+      errorInfo: { error_code: 429 },
+      formattedResponse: vi.fn().mockReturnValue({
+        error: { message: "Rate limit exceeded", type: "RateLimitError", code: 429, param: null },
+      }),
+    });
+
     expect(screen.getByText(/HTTP code 429/)).toBeInTheDocument();
+    expect(screen.getByTitle("Copy response to client")).not.toBeDisabled();
+    expect(screen.getByText("Response from model/endpoint not available")).toBeInTheDocument();
+  });
+
+  it("should show guidance when the model request is unavailable", () => {
+    renderPanel({
+      hasModelRequest: false,
+    });
+
+    expect(screen.getByText(/Request not available\. Enable/i)).toBeInTheDocument();
+    expect(screen.getByText("store_prompts_in_spend_logs")).toBeInTheDocument();
+    expect(screen.getByTitle("Copy request to model/endpoint")).toBeDisabled();
+  });
+
+  it("should show the client response empty state when no response data exists", () => {
+    renderPanel({
+      hasModelResponse: false,
+      hasClientResponse: false,
+      hasError: false,
+    });
+
+    expect(screen.getByText("Response to client not available")).toBeInTheDocument();
   });
 });
