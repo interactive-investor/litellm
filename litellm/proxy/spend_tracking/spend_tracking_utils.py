@@ -691,17 +691,29 @@ def _get_messages_for_spend_logs_payload(
     standard_logging_payload: StandardLoggingPayload | None,
     metadata: dict | None = None,
 ) -> str:
-    if _should_store_prompts_and_responses_in_spend_logs():
-        if standard_logging_payload is not None:
-            call_type: Final = standard_logging_payload.get("call_type", "")
-            if call_type == "_arealtime":
-                messages: Final = standard_logging_payload.get("messages")
-                if messages is not None:
-                    try:
-                        return safe_dumps(messages)
-                    except Exception:
-                        return "{}"
-    return "{}"
+    if not _should_store_prompts_and_responses_in_spend_logs():
+        return "{}"
+
+    messages: Any = None
+    if isinstance(standard_logging_payload, dict):
+        messages = standard_logging_payload.get("messages")
+
+    if messages is None and isinstance(metadata, dict):
+        messages = metadata.get("messages")
+
+    if messages is None:
+        return "{}"
+
+    sanitized_wrapper = _sanitize_request_body_for_spend_logs_payload(
+        {"messages": messages}
+    )
+    sanitized_messages = sanitized_wrapper.get("messages", messages)
+
+    if sanitized_messages is None:
+        return "{}"
+    if isinstance(sanitized_messages, str):
+        return sanitized_messages
+    return safe_dumps(sanitized_messages)
 
 
 _SENSITIVE_REQUEST_BODY_KEYS: Final = frozenset({"secret_fields"})
