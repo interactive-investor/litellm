@@ -372,6 +372,13 @@ class PresidioConfigModel(PresidioPresidioConfigModelUserInterface):
     pii_entities_config: dict[PiiEntityType | str, PiiAction] | None = Field(
         default=None, description="Configuration for PII entity types and actions"
     )
+    presidio_phrase_allow_list: list[str] | None = Field(
+        default=None,
+        description=(
+            "List of phrases Presidio should ignore when they are matched exactly "
+            "after normalisation."
+        ),
+    )
 
     presidio_score_thresholds: dict[PiiEntityType | str, float] | None = Field(
         default=None,
@@ -379,6 +386,10 @@ class PresidioConfigModel(PresidioPresidioConfigModelUserInterface):
             "Optional per-entity minimum confidence scores for Presidio detections. "
             "Entities below the threshold are ignored."
         ),
+    )
+    presidio_skip_system_developer_message: bool | None = Field(
+        default=None,
+        description="If True, skip scanning system and developer messages for PII.",
     )
     presidio_entities_deny_list: list[PiiEntityType | str] | None = Field(
         default=None,
@@ -1106,6 +1117,8 @@ class PresidioPerRequestConfig(BaseModel):
 
     language: str | None = None
     entities: list[PiiEntityType] | None = None
+    presidio_phrase_allow_list: list[str] | None = None
+    presidio_skip_system_developer_message: bool | None = None
 
 
 class ApplyGuardrailRequest(BaseModel):

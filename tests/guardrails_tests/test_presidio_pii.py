@@ -1,7 +1,7 @@
 import os
 import pytest
 from litellm import mock_completion
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import litellm
 from litellm.proxy.guardrails.guardrail_hooks.presidio import (
@@ -255,6 +255,134 @@ def test_validate_environment_missing_http(base_url):
             pii_masking.presidio_anonymizer_api_base, f"{expected_url}/anonymize/"
         )
         assert pii_masking.presidio_analyzer_api_base == f"{expected_url}/analyze/"
+
+
+@pytest.mark.asyncio
+async def test_presidio_check_pii_applies_per_request_allow_list():
+    text = "Email test@example.com or use card 4111-1111-1111-1111"
+    email_start = text.index("test@example.com")
+    email_end = email_start + len("test@example.com")
+    card_start = text.index("4111-1111-1111-1111")
+    card_end = card_start + len("4111-1111-1111-1111")
+
+    presidio_guardrail = _OPTIONAL_PresidioPIIMasking(mock_testing=True)
+    captured_entity_types = []
+
+    async def capture_anonymize(*args, **kwargs):
+        analyze_results = kwargs["analyze_results"]
+        captured_entity_types.extend(item["entity_type"] for item in analyze_results)
+        return "masked"
+
+    with patch.object(
+        presidio_guardrail,
+        "analyze_text",
+        new=AsyncMock(
+            return_value=[
+                {
+                    "start": email_start,
+                    "end": email_end,
+                    "entity_type": PiiEntityType.EMAIL_ADDRESS,
+                    "score": 0.99,
+                },
+                {
+                    "start": card_start,
+                    "end": card_end,
+                    "entity_type": PiiEntityType.CREDIT_CARD,
+                    "score": 0.99,
+                },
+            ]
+        ),
+    ), patch.object(
+        presidio_guardrail,
+        "anonymize_text",
+        new=AsyncMock(side_effect=capture_anonymize),
+    ):
+        result = await presidio_guardrail.check_pii(
+            text=text,
+            output_parse_pii=False,
+            presidio_config=PresidioPerRequestConfig(
+                presidio_phrase_allow_list=["test@example.com"]
+            ),
+            request_data={},
+        )
+
+    assert result == "masked"
+    assert captured_entity_types == [PiiEntityType.CREDIT_CARD]
+
+
+@pytest.mark.asyncio
+async def test_presidio_pre_call_hook_skips_system_and_developer_messages():
+    presidio_guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True,
+        presidio_skip_system_developer_message=True,
+    )
+    data = {
+        "messages": [
+            {"role": "system", "content": "system secret"},
+            {"role": "developer", "content": "developer secret"},
+            {"role": "user", "content": "user secret"},
+        ],
+        "model": "gpt-4o-mini",
+    }
+
+    async def mask_text(*args, **kwargs):
+        return f"masked::{kwargs['text']}"
+
+    with patch.object(
+        presidio_guardrail,
+        "check_pii",
+        new=AsyncMock(side_effect=mask_text),
+    ) as mock_check_pii:
+        modified_data = await presidio_guardrail.async_pre_call_hook(
+            user_api_key_dict=UserAPIKeyAuth(api_key="test_key"),
+            cache=DualCache(),
+            data=data,
+            call_type="completion",
+        )
+
+    assert modified_data["messages"][0]["content"] == "system secret"
+    assert modified_data["messages"][1]["content"] == "developer secret"
+    assert modified_data["messages"][2]["content"] == "masked::user secret"
+    assert mock_check_pii.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_presidio_pre_call_hook_respects_per_request_skip_override():
+    presidio_guardrail = _OPTIONAL_PresidioPIIMasking(
+        mock_testing=True,
+        presidio_skip_system_developer_message=True,
+    )
+    data = {
+        "messages": [
+            {"role": "system", "content": "system secret"},
+            {"role": "user", "content": "user secret"},
+        ],
+        "model": "gpt-4o-mini",
+        "metadata": {
+            "guardrail_config": {
+                "presidio_skip_system_developer_message": False,
+            }
+        },
+    }
+
+    async def mask_text(*args, **kwargs):
+        return f"masked::{kwargs['text']}"
+
+    with patch.object(
+        presidio_guardrail,
+        "check_pii",
+        new=AsyncMock(side_effect=mask_text),
+    ) as mock_check_pii:
+        modified_data = await presidio_guardrail.async_pre_call_hook(
+            user_api_key_dict=UserAPIKeyAuth(api_key="test_key"),
+            cache=DualCache(),
+            data=data,
+            call_type="completion",
+        )
+
+    assert modified_data["messages"][0]["content"] == "masked::system secret"
+    assert modified_data["messages"][1]["content"] == "masked::user secret"
+    assert mock_check_pii.await_count == 2
 
 
 @pytest.mark.asyncio
