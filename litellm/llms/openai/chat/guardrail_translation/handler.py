@@ -20,8 +20,8 @@ import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.llms.base_llm.guardrail_translation.base_translation import BaseTranslation
 from litellm.llms.base_llm.guardrail_translation.utils import (
-    effective_skip_system_message_for_guardrail,
-    openai_messages_without_system,
+    guardrail_excluded_openai_message_roles,
+    openai_messages_without_roles,
 )
 from litellm.main import stream_chunk_builder
 from litellm.types.llms.openai import AllMessageValues, ChatCompletionToolParam
@@ -72,7 +72,7 @@ class OpenAIChatCompletionsHandler(BaseTranslation):
         if messages is None:
             return data
 
-        skip_system = effective_skip_system_message_for_guardrail(guardrail_to_apply)
+        excluded_roles = guardrail_excluded_openai_message_roles(guardrail_to_apply)
 
         texts_to_check: List[str] = []
         images_to_check: List[str] = []
@@ -90,7 +90,7 @@ class OpenAIChatCompletionsHandler(BaseTranslation):
                 tool_calls_to_check=tool_calls_to_check,
                 text_task_mappings=text_task_mappings,
                 tool_call_task_mappings=tool_call_task_mappings,
-                skip_system_message=skip_system,
+                excluded_roles=excluded_roles,
             )
 
         # Step 2: Apply guardrail to all texts and tool calls in batch
@@ -103,8 +103,8 @@ class OpenAIChatCompletionsHandler(BaseTranslation):
             structured_messages = self.get_structured_messages(data)
             if structured_messages:
                 inputs["structured_messages"] = (
-                    openai_messages_without_system(structured_messages)
-                    if skip_system
+                    openai_messages_without_roles(structured_messages, excluded_roles)
+                    if excluded_roles
                     else structured_messages
                 )
             # Pass tools (function definitions) to the guardrail
@@ -175,14 +175,14 @@ class OpenAIChatCompletionsHandler(BaseTranslation):
         tool_calls_to_check: List[ChatCompletionToolParam],
         text_task_mappings: List[Tuple[int, Optional[int]]],
         tool_call_task_mappings: List[Tuple[int, int]],
-        skip_system_message: bool = False,
+        excluded_roles: Optional[set[str]] = None,
     ) -> None:
         """
         Extract text content, images, and tool calls from a message.
 
         Override this method to customize text/image/tool call extraction logic.
         """
-        if skip_system_message and str(message.get("role") or "").lower() == "system":
+        if excluded_roles and str(message.get("role") or "").lower() in excluded_roles:
             return
 
         content = message.get("content", None)

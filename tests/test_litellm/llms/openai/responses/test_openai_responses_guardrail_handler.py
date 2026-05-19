@@ -55,6 +55,27 @@ class MockGuardrail(CustomGuardrail):
         return inputs
 
 
+class CapturingGuardrail(CustomGuardrail):
+    """Guardrail that records request inputs without changing them."""
+
+    def __init__(self) -> None:
+        self.captured_inputs: Optional[GenericGuardrailAPIInputs] = None
+        self.presidio_skip_system_developer_message = True
+
+    async def apply_guardrail(
+        self,
+        inputs: GenericGuardrailAPIInputs,
+        request_data: dict,
+        input_type: Literal["request", "response"],
+        logging_obj: Optional[Any] = None,
+    ) -> GenericGuardrailAPIInputs:
+        self.captured_inputs = {
+            key: list(value) if isinstance(value, list) else value
+            for key, value in inputs.items()
+        }
+        return inputs
+
+
 class TestOpenAIResponsesHandlerDiscovery:
     """Test that the handler is properly discovered by the guardrail system"""
 
@@ -79,6 +100,29 @@ class TestOpenAIResponsesHandlerDiscovery:
 
 class TestOpenAIResponsesHandlerInputProcessing:
     """Test input processing functionality"""
+
+    @pytest.mark.asyncio
+    async def test_process_input_string_skips_instructions_for_presidio(self):
+        """Test Presidio skip flag excludes instructions-derived system messages."""
+        handler = OpenAIResponsesHandler()
+        guardrail = CapturingGuardrail()
+
+        data = {
+            "input": "Hello world",
+            "instructions": "Hidden system prompt",
+            "model": "gpt-4",
+        }
+
+        result = await handler.process_input_messages(data, guardrail)
+
+        assert result["input"] == "Hello world"
+        assert guardrail.captured_inputs is not None
+        assert guardrail.captured_inputs["texts"] == ["Hello world"]
+        assert [
+            msg["role"]
+            for msg in guardrail.captured_inputs.get("structured_messages", [])
+            if isinstance(msg, dict)
+        ] == ["user"]
 
     @pytest.mark.asyncio
     async def test_process_input_string(self):
@@ -125,6 +169,39 @@ class TestOpenAIResponsesHandlerInputProcessing:
         assert result["input"][0]["content"] == "Hello [GUARDRAILED]"
         assert result["input"][1]["content"] == "World [GUARDRAILED]"
         assert result["model"] == "gpt-4"
+
+    @pytest.mark.asyncio
+    async def test_process_input_list_skips_system_and_developer_for_presidio(self):
+        """Test Presidio skip flag excludes system and developer response messages."""
+        handler = OpenAIResponsesHandler()
+        guardrail = CapturingGuardrail()
+
+        data = {
+            "input": [
+                {"role": "system", "content": "Hidden system", "type": "message"},
+                {
+                    "role": "developer",
+                    "content": "Hidden developer",
+                    "type": "message",
+                },
+                {"role": "user", "content": "Hello", "type": "message"},
+            ],
+            "instructions": "Hidden instructions",
+            "model": "gpt-4",
+        }
+
+        result = await handler.process_input_messages(data, guardrail)
+
+        assert result["input"][0]["content"] == "Hidden system"
+        assert result["input"][1]["content"] == "Hidden developer"
+        assert result["input"][2]["content"] == "Hello"
+        assert guardrail.captured_inputs is not None
+        assert guardrail.captured_inputs["texts"] == ["Hello"]
+        assert [
+            msg["role"]
+            for msg in guardrail.captured_inputs.get("structured_messages", [])
+            if isinstance(msg, dict)
+        ] == ["user"]
 
     @pytest.mark.asyncio
     async def test_process_input_list_with_multimodal_content(self):

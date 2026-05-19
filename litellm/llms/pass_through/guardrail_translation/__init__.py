@@ -7,6 +7,8 @@ from litellm.types.utils import CallTypes
 
 guardrail_translation_mappings = {
     CallTypes.pass_through: PassThroughEndpointHandler,
+    CallTypes.llm_passthrough_route: PassThroughEndpointHandler,
+    CallTypes.allm_passthrough_route: PassThroughEndpointHandler,
 }
 
 __all__ = [
