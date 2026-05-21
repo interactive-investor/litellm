@@ -316,3 +316,60 @@ class TestAutoRouter:
 
         # Assert
         assert result is None
+
+
+def test_async_pre_routing_hook_no_route_match_falls_back_to_default():
+    """When routelayer returns None (no route above score threshold), the hook
+    must fall back to default_model — not echo back the auto-router model name,
+    which would re-enter this hook on every request and loop until OOM."""
+    # semantic_router is not installed in this env, so inject mock modules directly
+    # into sys.modules so the lazy imports inside AutoRouter methods resolve safely.
+    mock_routelayer = MagicMock()
+    mock_routelayer.return_value = None  # No route matched score threshold
+
+    mock_sr_class = MagicMock(return_value=mock_routelayer)
+    mock_loaded_router = MagicMock()
+    mock_loaded_router.routes = ["route1"]
+    mock_sr_class.from_json.return_value = mock_loaded_router
+
+    mock_routers_mod = MagicMock()
+    mock_routers_mod.SemanticRouter = mock_sr_class
+
+    mock_schema_mod = MagicMock()
+    # RouteChoice must be a real class so isinstance() works correctly
+    class _FakeRouteChoice:
+        pass
+    mock_schema_mod.RouteChoice = _FakeRouteChoice
+
+    with patch.dict(
+        sys.modules,
+        {
+            "semantic_router": MagicMock(),
+            "semantic_router.routers": mock_routers_mod,
+            "semantic_router.routers.base": MagicMock(),
+            "semantic_router.schema": mock_schema_mod,
+            "litellm.router_strategy.auto_router.litellm_encoder": MagicMock(),
+        },
+    ):
+        router_instance = MagicMock()
+
+        auto_router = AutoRouter(
+            model_name="auto-router",
+            auto_router_config_path="test/path/router.json",
+            default_model="gpt-4o-mini",
+            embedding_model="text-embedding-model",
+            litellm_router_instance=router_instance,
+        )
+
+        messages = [{"role": "user", "content": "unrecognised query"}]
+
+        result = asyncio.run(
+            auto_router.async_pre_routing_hook(
+                model="auto-router", request_kwargs={}, messages=messages
+            )
+        )
+
+    # Must be default_model, not "auto-router" (which would cause an OOM loop)
+    assert result is not None
+    assert result.model == "gpt-4o-mini"
+    assert result.messages == messages
