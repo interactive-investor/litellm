@@ -152,6 +152,11 @@ class AutoRouter(CustomLogger):
             model = route_choice.name or self.default_model
         elif isinstance(route_choice, list):
             model = route_choice[0].name or self.default_model
+        else:
+            # No route matched the score threshold — fall back to default instead of
+            # returning the original model name ("auto-router"), which would cause
+            # the router to re-enter this hook and loop until the worker OOMs.
+            model = self.default_model
 
         return PreRoutingHookResponse(
             model=model,
