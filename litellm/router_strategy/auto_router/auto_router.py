@@ -2,6 +2,7 @@
 Auto-Routing Strategy that works with a Semantic Router Config
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from litellm._logging import verbose_router_logger
@@ -48,6 +49,10 @@ class AutoRouter(CustomLogger):
         self.auto_sync_value = self.DEFAULT_AUTO_SYNC_VALUE
         self.loaded_routes: List[Route] = self._load_semantic_routing_routes()
         self.routelayer: Optional[SemanticRouter] = None
+        # Prevents concurrent first-request initialization from spawning duplicate
+        # SemanticRouter instances (each of which would block the event loop while
+        # encoding all utterances).
+        self._routelayer_lock: asyncio.Lock = asyncio.Lock()
         self.default_model = default_model
         self.embedding_model: str = embedding_model
         self.litellm_router_instance: "Router" = litellm_router_instance
@@ -134,17 +139,40 @@ class AutoRouter(CustomLogger):
             #######################
             # Create the route layer
             #######################
-            self.routelayer = SemanticRouter(
-                routes=self.loaded_routes,
-                encoder=LiteLLMRouterEncoder(
-                    litellm_router_instance=self.litellm_router_instance,
-                    model_name=self.embedding_model,
-                ),
-                auto_sync=self.auto_sync_value,
-            )
+            # SemanticRouter.__init__ encodes all utterances via the embedding model
+            # synchronously. With many utterances this can take several seconds and
+            # would block the entire asyncio event loop, causing the uvicorn worker
+            # health-check to time out and kill the process. Run it in a thread so
+            # the event loop stays responsive.
+            async with self._routelayer_lock:
+                if self.routelayer is None:
+                    encoder = LiteLLMRouterEncoder(
+                        litellm_router_instance=self.litellm_router_instance,
+                        model_name=self.embedding_model,
+                    )
+                    loaded_routes = self.loaded_routes
+                    auto_sync = self.auto_sync_value
+
+                    def _build_routelayer() -> SemanticRouter:
+                        return SemanticRouter(
+                            routes=loaded_routes,
+                            encoder=encoder,
+                            auto_sync=auto_sync,
+                        )
+
+                    self.routelayer = await asyncio.to_thread(_build_routelayer)
 
         message_content = self._extract_text_from_messages(messages)
-        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = self.routelayer(
+        routelayer = self.routelayer
+        # Use acall() (async) instead of __call__() (sync) so the embedding
+        # runs as a proper coroutine awaited on the event loop.
+        # __call__() goes through Router.embedding → run_async_function →
+        # ThreadPoolExecutor → future.result(), which blocks the event loop
+        # thread for the full duration of the Azure HTTP call. If that call
+        # takes longer than uvicorn's 10-second worker healthcheck window the
+        # worker is killed. acall() uses _async_encode → aencode_queries →
+        # aembedding, which is properly awaited and never blocks the loop.
+        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = await routelayer.acall(
             text=message_content
         )
         verbose_router_logger.debug(f"route_choice: {route_choice}")
