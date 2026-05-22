@@ -164,8 +164,15 @@ class AutoRouter(CustomLogger):
 
         message_content = self._extract_text_from_messages(messages)
         routelayer = self.routelayer
-        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = (
-            await asyncio.to_thread(routelayer, text=message_content)
+        # Call the SemanticRouter synchronously from the event loop coroutine.
+        # This causes run_async_function (inside Router.embedding) to detect the
+        # running loop and use ThreadPoolExecutor, matching the original code path
+        # that reliably completes in ~50ms. Wrapping this call in asyncio.to_thread
+        # was tried but caused Router.embedding → run_async_function to take the
+        # run_in_new_loop() branch (no running loop in the worker thread), which
+        # resulted in the Azure embedding HTTP call hanging indefinitely.
+        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = routelayer(
+            text=message_content
         )
         verbose_router_logger.debug(f"route_choice: {route_choice}")
         if isinstance(route_choice, RouteChoice):
