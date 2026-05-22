@@ -164,14 +164,15 @@ class AutoRouter(CustomLogger):
 
         message_content = self._extract_text_from_messages(messages)
         routelayer = self.routelayer
-        # Call the SemanticRouter synchronously from the event loop coroutine.
-        # This causes run_async_function (inside Router.embedding) to detect the
-        # running loop and use ThreadPoolExecutor, matching the original code path
-        # that reliably completes in ~50ms. Wrapping this call in asyncio.to_thread
-        # was tried but caused Router.embedding → run_async_function to take the
-        # run_in_new_loop() branch (no running loop in the worker thread), which
-        # resulted in the Azure embedding HTTP call hanging indefinitely.
-        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = routelayer(
+        # Use acall() (async) instead of __call__() (sync) so the embedding
+        # runs as a proper coroutine awaited on the event loop.
+        # __call__() goes through Router.embedding → run_async_function →
+        # ThreadPoolExecutor → future.result(), which blocks the event loop
+        # thread for the full duration of the Azure HTTP call. If that call
+        # takes longer than uvicorn's 10-second worker healthcheck window the
+        # worker is killed. acall() uses _async_encode → aencode_queries →
+        # aembedding, which is properly awaited and never blocks the loop.
+        route_choice: Optional[Union[RouteChoice, List[RouteChoice]]] = await routelayer.acall(
             text=message_content
         )
         verbose_router_logger.debug(f"route_choice: {route_choice}")
