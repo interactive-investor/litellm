@@ -39,6 +39,10 @@ from litellm.completion_extras.litellm_responses_transformation.transformation i
     OpenAiResponsesToChatCompletionStreamIterator,
 )
 from litellm.llms.base_llm.guardrail_translation.base_translation import BaseTranslation
+from litellm.llms.base_llm.guardrail_translation.utils import (
+    guardrail_excluded_openai_message_roles,
+    openai_messages_without_roles,
+)
 from litellm.responses.litellm_completion_transformation.transformation import (
     LiteLLMCompletionResponsesConfig,
 )
@@ -105,6 +109,7 @@ class OpenAIResponsesHandler(BaseTranslation):
         if input_data is None:
             return data
 
+        excluded_roles = guardrail_excluded_openai_message_roles(guardrail_to_apply)
         structured_messages = self.get_structured_messages(data)
 
         # Handle simple string input
@@ -119,7 +124,11 @@ class OpenAIResponsesHandler(BaseTranslation):
                 if tools_to_check:
                     inputs["tools"] = tools_to_check
             if structured_messages:
-                inputs["structured_messages"] = structured_messages  # type: ignore
+                inputs["structured_messages"] = (
+                    openai_messages_without_roles(structured_messages, excluded_roles)
+                    if excluded_roles
+                    else structured_messages
+                )  # type: ignore
             # Include model information if available
             model = data.get("model")
             if model:
@@ -156,6 +165,7 @@ class OpenAIResponsesHandler(BaseTranslation):
                 texts_to_check=texts_to_check,
                 images_to_check=images_to_check,
                 task_mappings=task_mappings,
+                excluded_roles=excluded_roles,
             )
 
         # Extract and transform tools if present
@@ -170,7 +180,11 @@ class OpenAIResponsesHandler(BaseTranslation):
             if tools_to_check:
                 inputs["tools"] = tools_to_check
             if structured_messages:
-                inputs["structured_messages"] = structured_messages  # type: ignore
+                inputs["structured_messages"] = (
+                    openai_messages_without_roles(structured_messages, excluded_roles)
+                    if excluded_roles
+                    else structured_messages
+                )  # type: ignore
             # Include model information if available
             model = data.get("model")
             if model:
@@ -291,12 +305,16 @@ class OpenAIResponsesHandler(BaseTranslation):
         texts_to_check: List[str],
         images_to_check: List[str],
         task_mappings: List[Tuple[int, Optional[int]]],
+        excluded_roles: Optional[set[str]] = None,
     ) -> None:
         """
         Extract text content and images from an input message.
 
         Override this method to customize text/image extraction logic.
         """
+        if excluded_roles and str(message.get("role") or "").lower() in excluded_roles:
+            return
+
         content = message.get("content", None)
         if content is None:
             return

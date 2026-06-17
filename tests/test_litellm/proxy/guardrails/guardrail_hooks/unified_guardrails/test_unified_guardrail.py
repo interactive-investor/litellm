@@ -1,5 +1,7 @@
 """Tests for unified guardrail."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 import litellm
@@ -19,6 +21,9 @@ from litellm.proxy._experimental.mcp_server.guardrail_translation.handler import
     MCPGuardrailTranslationHandler,
 )
 from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy.guardrails.guardrail_hooks.presidio import (
+    _OPTIONAL_PresidioPIIMasking,
+)
 from litellm.proxy.guardrails.guardrail_hooks.unified_guardrail import (
     unified_guardrail as unified_module,
 )
@@ -179,6 +184,51 @@ class TestUnifiedLLMGuardrails:
                 for m in (captured["inputs"].get("structured_messages") or [])
             }
             assert "system" in roles
+
+        @pytest.mark.asyncio
+        async def test_openai_handler_honours_presidio_skip_system_and_developer_messages(
+            self,
+        ):
+            captured = {}
+            presidio_guardrail = _OPTIONAL_PresidioPIIMasking(
+                mock_testing=True,
+                presidio_skip_system_developer_message=True,
+            )
+
+            async def capture_inputs(
+                inputs,
+                request_data,
+                input_type,
+                logging_obj=None,
+            ):
+                captured["inputs"] = inputs
+                return inputs
+
+            presidio_guardrail.apply_guardrail = AsyncMock(side_effect=capture_inputs)
+
+            data = {
+                "messages": [
+                    {"role": "system", "content": "system secret"},
+                    {"role": "developer", "content": "developer secret"},
+                    {"role": "user", "content": "hello"},
+                ],
+                "model": "gpt-4o",
+            }
+
+            await OpenAIChatCompletionsHandler().process_input_messages(
+                data=data,
+                guardrail_to_apply=presidio_guardrail,
+                litellm_logging_obj=None,
+            )
+
+            assert captured["inputs"]["texts"] == ["hello"]
+            roles = {
+                m.get("role")
+                for m in (captured["inputs"].get("structured_messages") or [])
+            }
+            assert roles == {"user"}
+            assert data["messages"][0]["content"] == "system secret"
+            assert data["messages"][1]["content"] == "developer secret"
 
     class TestAsyncPreCallHook:
         @pytest.mark.asyncio
