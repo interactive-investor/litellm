@@ -674,6 +674,14 @@ class _OPTIONAL_PresidioPIIMasking(CustomGuardrail):
                     analyze_results=analyze_results,
                     text=text,
                     allow_list=self._select_allow_list(presidio_config),
+<<<<<<< HEAD
+=======
+                )
+
+                # Apply score threshold filtering if configured
+                analyze_results = self.filter_analyze_results_by_score(
+                    analyze_results=analyze_results
+>>>>>>> origin/ii-main
                 )
 
                 # Apply score threshold filtering if configured
