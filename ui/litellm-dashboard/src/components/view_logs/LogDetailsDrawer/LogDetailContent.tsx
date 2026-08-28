@@ -544,6 +544,7 @@ function RequestResponseSection({
 }: RequestResponseSectionProps) {
   const [activeTab, setActiveTab] = useState<RequestResponseTabKey>("client-request");
   const [viewMode, setViewMode] = useState<'pretty' | 'json'>('pretty');
+  const [open, setOpen] = useState(true);
 
   const modelRequestEmpty = (
     <span className="block whitespace-normal break-words text-left max-w-prose mx-auto">
@@ -647,8 +648,8 @@ function RequestResponseSection({
             <div>
               <TabsContent value="pretty">
                 <PrettyMessagesView
-                  request={getRawRequest()}
-                  response={getFormattedResponse()}
+                  request={getClientRequest()}
+                  response={getClientResponse()}
                   metrics={{
                     prompt_tokens: promptTokens,
                     completion_tokens: completionTokens,
@@ -660,61 +661,34 @@ function RequestResponseSection({
               <TabsContent value="json">
                 <Tabs
                   value={activeTab}
-                  onValueChange={(key) => setActiveTab(key as typeof TAB_REQUEST | typeof TAB_RESPONSE)}
+                  onValueChange={(key) => setActiveTab(key as RequestResponseTabKey)}
                 >
-                  <Radio.Button value="pretty">Pretty</Radio.Button>
-                  <Radio.Button value="json">JSON</Radio.Button>
-                </Radio.Group>
-              </div>
-            ),
-            children: (
-              <div>
-                {viewMode === 'pretty' ? (
-                  <PrettyMessagesView
-                    request={getClientRequest()}
-                    response={getClientResponse()}
-                    metrics={{
-                      prompt_tokens: promptTokens,
-                      completion_tokens: completionTokens,
-                      input_cost: inputCost,
-                      output_cost: outputCost,
-                    }}
-                  />
-                ) : (
-                  <Tabs
-                    activeKey={activeTab}
-                    onChange={(key) => setActiveTab(key as RequestResponseTabKey)}
-                    tabBarExtraContent={
-                      <Text
-                        copyable={{
-                          text: getCopyText(),
-                          tooltips: ["Copy JSON", "Copied!"]
-                        }}
-                        disabled={!tabs.find((tab) => tab.key === activeTab)?.hasData}
-                      />
-                    }
-                    items={tabs.map((tab) => ({
-                      key: tab.key,
-                      label: tab.label,
-                      children: (
-                        <div style={{ paddingTop: SPACING_XLARGE, paddingBottom: SPACING_XLARGE }}>
-                          {tab.hasData ? (
-                            <JsonViewer data={tab.getData()} mode="formatted" />
-                          ) : (
-                            <div style={{ textAlign: "center", padding: 20, color: "#999", fontStyle: "italic" }}>
-                              {tab.emptyContent}
-                            </div>
-                          )}
-                        </div>
-                      ),
-                    }))}
-                  />
-                )}
-              </div>
-            ),
-          },
-        ]}
-      />
+                  <TabsList className="mx-4 mt-4">
+                    {tabs.map((tab) => (
+                      <TabsTrigger key={tab.key} value={tab.key}>
+                        {tab.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {tabs.map((tab) => (
+                    <TabsContent key={tab.key} value={tab.key}>
+                      <div className="px-4 py-4">
+                        {tab.hasData ? (
+                          <JsonViewer data={tab.getData()} mode="formatted" />
+                        ) : (
+                          <div className="text-center italic text-gray-500">
+                            {tab.emptyContent}
+                          </div>
+                        )}
+                      </div>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </TabsContent>
+            </div>
+          </CollapsibleContent>
+        </Tabs>
+      </Collapsible>
     </div>
   );
 }
