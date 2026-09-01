@@ -186,23 +186,42 @@ describe("LogDetailContent", () => {
     expect(screen.getByText("JSON")).toBeInTheDocument();
 
     await user.click(screen.getByText("JSON"));
-    expect(screen.getByRole("tab", { name: "Request" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Request from client" })).toBeInTheDocument();
 
     await user.click(screen.getByText("Pretty"));
-    expect(screen.queryByRole("tab", { name: "Request" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Request from client" })).not.toBeInTheDocument();
   });
 
-  it("should display Request and Response tabs when JSON view is selected", async () => {
+  it("should display client and model request/response tabs when JSON view is selected", async () => {
     const user = userEvent.setup();
     render(<LogDetailContent logEntry={createLogEntry()} />);
 
     await user.click(screen.getByText("JSON"));
 
-    expect(screen.getByRole("tab", { name: "Request" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Response" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Request from client" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Request to model" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Response from model" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Response to client" })).toBeInTheDocument();
   });
 
-  it("should display response not available message when no response and Response tab is selected", async () => {
+  it("should display model request guidance when the model request tab has no data", async () => {
+    const user = userEvent.setup();
+    render(
+      <LogDetailContent
+        logEntry={createLogEntry({
+          messages: [],
+          proxy_server_request: { path: "/chat/completions" },
+        })}
+      />,
+    );
+
+    await user.click(screen.getByText("JSON"));
+    await user.click(screen.getByRole("tab", { name: "Request to model" }));
+
+    expect(screen.getByText(/Request not available\. Enable/i)).toBeInTheDocument();
+  });
+
+  it("should display response not available when no model response is recorded", async () => {
     const user = userEvent.setup();
     render(
       <LogDetailContent
@@ -214,9 +233,9 @@ describe("LogDetailContent", () => {
     );
 
     await user.click(screen.getByText("JSON"));
-    await user.click(screen.getByRole("tab", { name: "Response" }));
+    await user.click(screen.getByRole("tab", { name: "Response from model" }));
 
-    expect(screen.getByText("Response data not available")).toBeInTheDocument();
+    expect(screen.getByText("Response from model/endpoint not available")).toBeInTheDocument();
   });
 
   it("should display Metadata section when metadata has keys", () => {
