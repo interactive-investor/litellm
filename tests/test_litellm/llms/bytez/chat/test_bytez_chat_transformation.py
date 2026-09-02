@@ -1,10 +1,7 @@
-import os
-import sys
 import pytest
 import json
 
 # Adds the parent directory to the system path
-sys.path.insert(0, os.path.abspath("../../../../.."))
 
 from litellm.llms.bytez.chat.transformation import BytezChatConfig, API_BASE, version
 
@@ -35,11 +32,10 @@ class TestBytezChatConfig:
         assert result["user-agent"] == f"litellm/{version}"
 
     def test_missing_api_key(self):
-        with pytest.raises(Exception) as excinfo:
-            config = BytezChatConfig()
+        config = BytezChatConfig()
+        headers = {}
 
-            headers = {}
-
+        with pytest.raises(Exception, match='Missing api_key, make sure you pass in your api key') as excinfo:
             config.validate_environment(
                 headers=headers,
                 model=TEST_MODEL,
@@ -86,6 +82,29 @@ class TestBytezChatConfig:
         )
 
         assert response.choices[0].message.content == output_content  # type: ignore
+
+    def test_get_complete_url_encodes_model_path_segment(self):
+        config = BytezChatConfig()
+
+        assert (
+            config.get_complete_url(
+                api_base=API_BASE,
+                api_key=TEST_API_KEY,
+                model="google/gemma?x=1#frag",
+                optional_params={},
+                litellm_params={},
+            )
+            == f"{API_BASE}/google/gemma%3Fx%3D1%23frag"
+        )
+
+        with pytest.raises(ValueError, match="dot path segment"):
+            config.get_complete_url(
+                api_base=API_BASE,
+                api_key=TEST_API_KEY,
+                model="../../models/other",
+                optional_params={},
+                litellm_params={},
+            )
 
     def test_bytez_messages_adaptation(self):
         cases = [

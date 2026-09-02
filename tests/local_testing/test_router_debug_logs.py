@@ -1,16 +1,11 @@
 import asyncio
 import os
-import sys
 import time
 import traceback
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../..")
-)  # Adds the parent directory to the system path
 
-import asyncio
 import logging
 
 import litellm
@@ -18,6 +13,7 @@ from litellm import Router
 
 # this tests debug logs from litellm router and litellm proxy server
 from litellm._logging import verbose_logger, verbose_proxy_logger, verbose_router_logger
+from litellm.llms.custom_httpx.async_client_cleanup import close_litellm_async_clients
 
 
 # this tests debug logs from litellm router and litellm proxy server
@@ -74,11 +70,16 @@ def test_async_fallbacks(caplog):
             pytest.fail(f"An exception occurred: {e}")
         finally:
             router.reset()
+            # Close cached aiohttp/httpx clients before the event loop ends
+            # to prevent "Unclosed client session" / "Unclosed connector" warnings.
+            await close_litellm_async_clients()
 
     asyncio.run(_make_request())
     captured_logs = [rec.message for rec in caplog.records]
 
-    # on circle ci the captured logs get some async task exception logs - filter them out "Task exception was never retrieved"
+    # on circle ci the captured logs get async cleanup noise from the gc (leaked
+    # task warnings, plus aiohttp "Unclosed client session"/"Unclosed connector"
+    # warnings from cached clients other router tests evicted) - filter it out
     captured_logs = [
         log
         for log in captured_logs
@@ -86,6 +87,8 @@ def test_async_fallbacks(caplog):
         and "Task was destroyed but it is pending" not in log
         and "get_available_deployment" not in log
         and "in the Langfuse queue" not in log
+        and "Unclosed client session" not in log
+        and "Unclosed connector" not in log
     ]
 
     print("\n Captured caplog records - ", captured_logs)

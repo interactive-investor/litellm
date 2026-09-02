@@ -6,13 +6,11 @@ for RAGFlow's OpenAI-compatible API with custom path structures.
 """
 
 import os
-import sys
 from unittest.mock import Mock, patch
 
 import pytest
 
 # Add the project root to Python path
-sys.path.insert(0, os.path.abspath("../../../../.."))
 
 import litellm
 from litellm.llms.ragflow.chat.transformation import RAGFlowConfig
@@ -115,6 +113,24 @@ class TestRAGFlowChatTransformation:
         assert (
             url
             == "http://localhost:9380/api/v1/agents_openai/my-agent-id/chat/completions"
+        )
+
+    def test_get_complete_url_encodes_entity_id(self):
+        """Test RAGFlow chat IDs are encoded as one upstream path segment."""
+        config = RAGFlowConfig()
+
+        url = config.get_complete_url(
+            api_base="http://localhost:9380",
+            api_key=None,
+            model="ragflow/chat/..%2F..%2Fagents_openai%2Fother/gpt-4o-mini",
+            optional_params={},
+            litellm_params={},
+            stream=False,
+        )
+
+        assert (
+            url
+            == "http://localhost:9380/api/v1/chats_openai/..%252F..%252Fagents_openai%252Fother/chat/completions"
         )
 
     def test_get_complete_url_strips_v1(self):

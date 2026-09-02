@@ -233,6 +233,52 @@ async def test_azure_text_moderation_guardrail_post_call_success_hook():
 
 
 @pytest.mark.asyncio
+async def test_azure_text_moderation_guardrail_post_call_checks_all_choices():
+    azure_text_moderation_guardrail = AzureContentSafetyTextModerationGuardrail(
+        guardrail_name="azure_text_moderation",
+        api_key="azure_text_moderation_api_key",
+        api_base="azure_text_moderation_api_base",
+    )
+    with patch.object(
+        azure_text_moderation_guardrail, "async_make_request"
+    ) as mock_async_make_request:
+        mock_async_make_request.side_effect = [
+            {
+                "blocklistsMatch": [],
+                "categoriesAnalysis": [{"category": "Hate", "severity": 0}],
+            },
+            HTTPException(
+                status_code=400,
+                detail={"error": "blocked second choice"},
+            ),
+        ]
+
+        with pytest.raises(HTTPException):
+            await azure_text_moderation_guardrail.async_post_call_success_hook(
+                data={},
+                user_api_key_dict=UserAPIKeyAuth(
+                    api_key="azure_text_moderation_api_key"
+                ),
+                response=ModelResponse(
+                    choices=[
+                        Choices(
+                            index=0,
+                            message=Message(content="safe response"),
+                        ),
+                        Choices(
+                            index=1,
+                            message=Message(content="unsafe response"),
+                        ),
+                    ]
+                ),
+            )
+
+        assert [
+            call.kwargs["text"] for call in mock_async_make_request.call_args_list
+        ] == ["safe response", "unsafe response"]
+
+
+@pytest.mark.asyncio
 async def test_azure_text_moderation_guardrail_post_call_streaming_hook():
 
     azure_text_moderation_guardrail = AzureContentSafetyTextModerationGuardrail(
@@ -342,3 +388,78 @@ def test_split_preserves_whitespace():
     original = ("line one\n" + "line two\t\tcol\n" + "  indented\n") * 200
     chunks = guardrail.split_text_by_words(original, 500)
     assert "".join(chunks) == original
+
+
+def _moderation_response(severity):
+    response = Mock()
+    response.json.return_value = {
+        "blocklistsMatch": [],
+        "categoriesAnalysis": [{"category": "Hate", "severity": severity}],
+    }
+    return response
+
+
+def _moderation_guardrail():
+    return AzureContentSafetyTextModerationGuardrail(
+        guardrail_name="azure_text_moderation",
+        api_key="azure_text_moderation_api_key",
+        api_base="azure_text_moderation_api_base",
+    )
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_scans_every_text():
+    """/guardrails/apply_guardrail reaches this method directly. Inheriting the base
+    implementation returns the caller's text unscanned, so the endpoint answers 200 for
+    a payload Azure would reject."""
+    guardrail = _moderation_guardrail()
+
+    with patch.object(guardrail.async_handler, "post", return_value=_moderation_response(0)) as mock_post:
+        result = await guardrail.apply_guardrail(
+            inputs={"texts": ["hello there", "and again"]},
+            request_data={},
+            input_type="request",
+        )
+
+    assert mock_post.call_count == 2
+    assert [call.kwargs["json"]["text"] for call in mock_post.call_args_list] == ["hello there", "and again"]
+    assert result == {"texts": ["hello there", "and again"]}
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_raises_on_detection_in_any_text():
+    guardrail = _moderation_guardrail()
+
+    with patch.object(
+        guardrail.async_handler, "post", side_effect=[_moderation_response(0), _moderation_response(6)]
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await guardrail.apply_guardrail(
+                inputs={"texts": ["hello there", "something hateful"]},
+                request_data={},
+                input_type="request",
+            )
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_skips_blank_texts():
+    guardrail = _moderation_guardrail()
+
+    with patch.object(guardrail.async_handler, "post") as mock_post:
+        result = await guardrail.apply_guardrail(inputs={"texts": ["", ""]}, request_data={}, input_type="request")
+
+    mock_post.assert_not_called()
+    assert result == {"texts": ["", ""]}
+
+
+@pytest.mark.asyncio
+async def test_apply_guardrail_handles_missing_texts_key():
+    guardrail = _moderation_guardrail()
+
+    with patch.object(guardrail.async_handler, "post") as mock_post:
+        result = await guardrail.apply_guardrail(inputs={"images": ["x"]}, request_data={}, input_type="request")
+
+    mock_post.assert_not_called()
+    assert result == {"images": ["x"]}

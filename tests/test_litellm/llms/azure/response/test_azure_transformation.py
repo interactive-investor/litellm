@@ -1,13 +1,8 @@
-import os
-import sys
 from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../../../../..")
-)  # Adds the parent directory to the system path
 
 from unittest.mock import MagicMock
 
@@ -94,6 +89,28 @@ def test_get_complete_url():
     expected = "https://litellm8397336933.openai.azure.com/openai/responses?api-version=2024-05-01-preview"
 
     assert result == expected
+
+
+@pytest.mark.serial
+def test_response_id_path_requests_encode_response_id():
+    config = AzureOpenAIResponsesAPIConfig()
+    api_base = (
+        "https://litellm8397336933.openai.azure.com/openai/responses"
+        "?api-version=2024-05-01-preview"
+    )
+
+    url, params = config.transform_cancel_response_api_request(
+        response_id="../../responses/other?x=1#frag",
+        api_base=api_base,
+        litellm_params=GenericLiteLLMParams(),
+        headers={},
+    )
+
+    assert (
+        url
+        == "https://litellm8397336933.openai.azure.com/openai/responses/..%2F..%2Fresponses%2Fother%3Fx%3D1%23frag/cancel?api-version=2024-05-01-preview"
+    )
+    assert params == {}
 
 
 @pytest.mark.serial
@@ -314,6 +331,24 @@ class TestAzureResponsesAPIConfig:
         expected_url = "https://test.openai.azure.com/openai/responses/resp_test123/cancel?api-version=2024-05-01-preview"
         assert url == expected_url
         assert data == {}
+
+    def test_azure_list_input_items_request_url_path_before_query(self):
+        from litellm.types.router import GenericLiteLLMParams
+
+        api_base = "https://test.openai.azure.com/openai/responses?api-version=2025-03-01-preview"
+
+        url, params = self.config.transform_list_input_items_request(
+            response_id="resp_test123",
+            api_base=api_base,
+            litellm_params=GenericLiteLLMParams(api_version="2025-03-01-preview"),
+            headers={},
+        )
+
+        assert (
+            url
+            == "https://test.openai.azure.com/openai/responses/resp_test123/input_items?api-version=2025-03-01-preview"
+        )
+        assert params == {"limit": 20, "order": "desc"}
 
     def test_azure_cancel_response_api_response(self):
         """Test Azure cancel response API response transformation"""

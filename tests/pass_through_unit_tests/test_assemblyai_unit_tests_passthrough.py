@@ -1,12 +1,7 @@
 import json
-import os
-import sys
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
-sys.path.insert(
-    0, os.path.abspath("../..")
-)  # Adds the parent directory to the system-path
 
 
 import httpx
@@ -15,20 +10,8 @@ import litellm
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 
 
-import json
-import os
-import sys
-from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch
 
-sys.path.insert(
-    0, os.path.abspath("../..")
-)  # Adds the parent directory to the system-path
 
-import httpx
-import pytest
-import litellm
-from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
 from litellm.proxy.pass_through_endpoints.llm_provider_handlers.assembly_passthrough_logging_handler import (
     AssemblyAIPassthroughLoggingHandler,
     AssemblyAITranscriptResponse,
@@ -134,3 +117,62 @@ def test_is_assemblyai_route():
         == False
     )
     assert handler.is_assemblyai_route("") == False
+
+
+# --- Security: SSRF via transcript_id path traversal ---
+
+
+def test_get_assembly_transcript_rejects_slash_in_id(assembly_handler):
+    with patch(
+        "litellm.proxy.pass_through_endpoints.llm_passthrough_endpoints.passthrough_endpoint_router.get_credentials",
+        return_value="test-key",
+    ):
+        with pytest.raises(ValueError, match="disallowed characters"):
+            assembly_handler._get_assembly_transcript("../../admin/credentials")
+
+
+def test_get_assembly_transcript_rejects_dotdot_in_id(assembly_handler):
+    with patch(
+        "litellm.proxy.pass_through_endpoints.llm_passthrough_endpoints.passthrough_endpoint_router.get_credentials",
+        return_value="test-key",
+    ):
+        with pytest.raises(ValueError, match="disallowed characters"):
+            assembly_handler._get_assembly_transcript("..evil")
+
+
+def test_get_assembly_transcript_rejects_fragment_in_id(assembly_handler):
+    with patch(
+        "litellm.proxy.pass_through_endpoints.llm_passthrough_endpoints.passthrough_endpoint_router.get_credentials",
+        return_value="test-key",
+    ):
+        with pytest.raises(ValueError, match="disallowed characters"):
+            assembly_handler._get_assembly_transcript("abc#suffix")
+
+
+def test_get_assembly_transcript_rejects_query_in_id(assembly_handler):
+    with patch(
+        "litellm.proxy.pass_through_endpoints.llm_passthrough_endpoints.passthrough_endpoint_router.get_credentials",
+        return_value="test-key",
+    ):
+        with pytest.raises(ValueError, match="disallowed characters"):
+            assembly_handler._get_assembly_transcript("abc?x=1")
+
+
+def test_get_assembly_transcript_allows_valid_id(
+    assembly_handler, mock_transcript_response
+):
+    with patch(
+        "litellm.proxy.pass_through_endpoints.llm_passthrough_endpoints.passthrough_endpoint_router.get_credentials",
+        return_value="test-key",
+    ):
+        with patch("httpx.get") as mock_get:
+            mock_get.return_value.json.return_value = mock_transcript_response
+            mock_get.return_value.raise_for_status.return_value = None
+
+            transcript = assembly_handler._get_assembly_transcript(
+                "abc123-valid-id_xyz"
+            )
+            assert transcript == mock_transcript_response
+            called_url = mock_get.call_args[0][0]
+            assert "abc123-valid-id_xyz" in called_url
+            assert ".." not in called_url

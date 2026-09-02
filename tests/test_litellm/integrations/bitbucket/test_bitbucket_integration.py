@@ -1,16 +1,12 @@
 import json
-import os
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../../..")
-)  # Adds the parent directory to the system path
 
 import litellm
 from litellm.integrations.bitbucket import BitBucketPromptManager
+from litellm.integrations.bitbucket.bitbucket_client import _sanitize_file_path
 
 
 @patch("litellm.integrations.bitbucket.bitbucket_prompt_manager.BitBucketClient")
@@ -87,39 +83,44 @@ def test_bitbucket_prompt_manager_error_handling(mock_client_class):
         "access_token": "test-token",
     }
 
+    manager = BitBucketPromptManager(config, prompt_id="test_prompt")
+
     with pytest.raises(
         Exception, match="Failed to load prompt 'test_prompt' from BitBucket"
     ):
-        manager = BitBucketPromptManager(config, prompt_id="test_prompt")
-        _ = manager.prompt_manager  # This triggers the error
+        _ = manager.prompt_manager
 
 
 def test_bitbucket_prompt_manager_config_validation():
     """Test BitBucketPromptManager configuration validation."""
     # Test missing required fields - validation happens when prompt_manager is accessed
-    with pytest.raises(
-        ValueError, match="workspace, repository, and access_token are required"
-    ):
-        manager = BitBucketPromptManager({})
-        _ = manager.prompt_manager  # This triggers validation
+    manager = BitBucketPromptManager({})
 
     with pytest.raises(
         ValueError, match="workspace, repository, and access_token are required"
     ):
-        manager = BitBucketPromptManager({"workspace": "test"})
-        _ = manager.prompt_manager  # This triggers validation
+        _ = manager.prompt_manager
+
+    manager = BitBucketPromptManager({"workspace": "test"})
 
     with pytest.raises(
         ValueError, match="workspace, repository, and access_token are required"
     ):
-        manager = BitBucketPromptManager({"repository": "test"})
-        _ = manager.prompt_manager  # This triggers validation
+        _ = manager.prompt_manager
+
+    manager = BitBucketPromptManager({"repository": "test"})
 
     with pytest.raises(
         ValueError, match="workspace, repository, and access_token are required"
     ):
-        manager = BitBucketPromptManager({"access_token": "test"})
-        _ = manager.prompt_manager  # This triggers validation
+        _ = manager.prompt_manager
+
+    manager = BitBucketPromptManager({"access_token": "test"})
+
+    with pytest.raises(
+        ValueError, match="workspace, repository, and access_token are required"
+    ):
+        _ = manager.prompt_manager
 
 
 @patch("litellm.integrations.bitbucket.bitbucket_prompt_manager.BitBucketClient")
@@ -370,3 +371,45 @@ def test_bitbucket_prompt_manager_list_templates(mock_client_class):
     templates = manager.prompt_manager.list_templates()
     assert isinstance(templates, list)
     assert "test_prompt" in templates
+
+
+# --- Security: path traversal / SSRF ---
+
+
+def test_sanitize_file_path_rejects_traversal():
+    with pytest.raises(ValueError, match="path traversal"):
+        _sanitize_file_path("../../etc/passwd")
+
+
+def test_sanitize_file_path_rejects_fragment():
+    with pytest.raises(ValueError, match="URL special characters"):
+        _sanitize_file_path("secret#.prompt")
+
+
+def test_sanitize_file_path_rejects_query():
+    with pytest.raises(ValueError, match="URL special characters"):
+        _sanitize_file_path("secret?.prompt")
+
+
+def test_sanitize_file_path_encodes_special_chars():
+    result = _sanitize_file_path("prompts/my prompt.prompt")
+    assert result == "prompts/my%20prompt.prompt"
+
+
+def test_sanitize_file_path_allows_normal_paths():
+    assert _sanitize_file_path("prompts/my-prompt") == "prompts/my-prompt"
+    assert _sanitize_file_path("simple") == "simple"
+
+
+def test_bitbucket_client_rejects_traversal_in_get_file_content():
+    from litellm.integrations.bitbucket.bitbucket_client import BitBucketClient
+
+    client = BitBucketClient(
+        {
+            "workspace": "ws",
+            "repository": "repo",
+            "access_token": "tok",
+        }
+    )
+    with pytest.raises(ValueError, match="path traversal"):
+        client.get_file_content("../../admin/credentials")

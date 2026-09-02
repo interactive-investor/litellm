@@ -1,14 +1,10 @@
 import json
 import os
-import sys
 from unittest.mock import MagicMock, patch
 import httpx
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../../..")
-)  # Adds the parent directory to the system path
 
 import litellm
 from litellm.llms.openai.containers.transformation import OpenAIContainerConfig
@@ -230,6 +226,23 @@ class TestOpenAIContainerTransformation:
         assert url == f"{api_base}/{container_id}"
         assert params == {}  # No query params for retrieve
 
+    def test_transform_container_retrieve_request_encodes_path_traversal(self):
+        """Test container IDs are treated as a single upstream path segment."""
+        api_base = "https://api.openai.com/v1/containers"
+
+        url, params = self.config.transform_container_retrieve_request(
+            container_id="../../vector_stores?x=1#frag",
+            api_base=api_base,
+            litellm_params={},
+            headers={},
+        )
+
+        assert (
+            url
+            == "https://api.openai.com/v1/containers/..%2F..%2Fvector_stores%3Fx%3D1%23frag"
+        )
+        assert params == {}
+
     def test_transform_container_retrieve_response(self):
         """Test container retrieve response transformation."""
         # Mock HTTP response
@@ -324,10 +337,10 @@ class TestOpenAIContainerTransformation:
         assert data["expires_after"] is None
         assert data["file_ids"] is None
 
-    def test_container_create_response_includes_cost(self):
+    def test_container_create_response_includes_cost(self, monkeypatch):
         """Test that container create response includes code interpreter cost calculation."""
         # Force use of local model cost map for CI/CD consistency
-        os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+        monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
         litellm.model_cost = litellm.get_model_cost_map(url="")
 
         from litellm.litellm_core_utils.llm_cost_calc.tool_call_cost_tracking import (

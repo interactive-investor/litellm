@@ -42,7 +42,7 @@ class TestPGVectorStoreConfig:
         litellm_params = GenericLiteLLMParams()
         headers = {}
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match='PG Vector API key is required\\. Set PG_VECTOR_API_KEY') as exc_info:
             config.validate_environment(headers, litellm_params)
 
         assert "PG Vector API key is required" in str(exc_info.value)
@@ -84,7 +84,7 @@ class TestPGVectorStoreConfig:
         config = PGVectorStoreConfig()
         litellm_params = {}
 
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(ValueError, match='PG Vector API base URL is required\\. Set') as exc_info:
             config.get_complete_url(None, litellm_params)
 
         assert "PG Vector API base URL is required" in str(exc_info.value)
@@ -140,6 +140,24 @@ class TestPGVectorStoreConfig:
         # Verify results
         assert headers["Authorization"] == "Bearer test_key"
         assert url == "https://example.com/v1/vector_stores"
+
+    def test_search_request_encodes_vector_store_id(self):
+        config = PGVectorStoreConfig()
+
+        url, request_body = config.transform_search_vector_store_request(
+            vector_store_id="../../files?x=1#frag",
+            query="hello",
+            vector_store_search_optional_params={},
+            api_base="https://example.com/v1/vector_stores",
+            litellm_logging_obj=Mock(),
+            litellm_params={},
+        )
+
+        assert (
+            url
+            == "https://example.com/v1/vector_stores/..%2F..%2Ffiles%3Fx%3D1%23frag/search"
+        )
+        assert request_body["query"] == "hello"
 
     def test_environment_variable_support(self):
         """

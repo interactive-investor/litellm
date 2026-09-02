@@ -2,14 +2,10 @@ import asyncio
 import io
 import json
 import os
-import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-sys.path.insert(
-    0, os.path.abspath("../..")
-)  # Adds the parent directory to the system path
 
 import litellm
 from litellm.cost_calculator import default_video_cost_calculator
@@ -151,7 +147,7 @@ class TestVideoGeneration:
             "video_generation_handler",
             side_effect=Exception("API Error"),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(litellm.APIConnectionError):
                 video_generation(prompt="Test video", model="sora-2")
 
     def test_video_generation_provider_config(self):
@@ -242,7 +238,6 @@ class TestVideoGeneration:
     def test_video_generation_cost_calculation(self):
         """Test video generation cost calculation."""
         import json
-        import os
 
         # Try to load the local model cost map, skip if not found
         cost_map_path = "model_prices_and_context_window.json"
@@ -397,6 +392,34 @@ class TestVideoGeneration:
             litellm_logging_obj=mock_logging_obj,
         )
         assert abs(cost - 0.8) < 0.001
+
+    def test_completion_cost_video_edit_uses_video_calculator(self):
+        """video_edit is charged via the same video cost path as create_video."""
+        from litellm.cost_calculator import completion_cost
+
+        mock_response = MagicMock()
+        mock_response.usage = MagicMock()
+        mock_response.usage.duration_seconds = 10.0
+        type(mock_response)._hidden_params = {}
+
+        mock_logging_obj = MagicMock()
+        mock_logging_obj.litellm_params = {
+            "metadata": {
+                "model_info": {
+                    "output_cost_per_video_per_second": 0.05,
+                }
+            }
+        }
+
+        cost = completion_cost(
+            completion_response=mock_response,
+            model="vertex_ai/veo-3.1-generate-001",
+            call_type="video_edit",
+            custom_llm_provider="vertex_ai",
+            custom_pricing=True,
+            litellm_logging_obj=mock_logging_obj,
+        )
+        assert cost == 0.5
 
     def test_video_generation_with_files(self):
         """Test video generation with file uploads."""
@@ -711,7 +734,7 @@ class TestVideoGeneration:
             "video_status_handler",
             side_effect=Exception("API Error"),
         ):
-            with pytest.raises(Exception):
+            with pytest.raises(litellm.APIConnectionError):
                 video_status(video_id="test_video_id", model="sora-2")
 
     def test_video_status_request_transformation(self):

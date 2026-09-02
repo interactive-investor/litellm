@@ -3,13 +3,12 @@ Tests for the Semantic Guard guardrail — embedding-based prompt injection dete
 """
 
 import os
-import sys
 
-sys.path.insert(0, os.path.abspath("../.."))
 
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 
 class TestRouteLoader:
@@ -171,6 +170,25 @@ class TestHelperFunctions:
         mock_response.choices[0].message.content = "Hello from LLM"
         assert _extract_response_text(mock_response) == "Hello from LLM"
 
+    def test_extract_response_text_combines_all_choices(self):
+        from litellm.proxy.guardrails.guardrail_hooks.semantic_guard.semantic_guard import (
+            _extract_response_text,
+        )
+
+        first_choice = MagicMock()
+        first_choice.message.content = "first response"
+        second_choice = MagicMock()
+        second_choice.message.content = [
+            {"type": "text", "text": "second"},
+            {"type": "text", "text": "response"},
+        ]
+        mock_response = MagicMock()
+        mock_response.choices = [first_choice, second_choice]
+
+        assert (
+            _extract_response_text(mock_response) == "first response\nsecond response"
+        )
+
     def test_extract_response_text_empty(self):
         from litellm.proxy.guardrails.guardrail_hooks.semantic_guard.semantic_guard import (
             _extract_response_text,
@@ -288,7 +306,7 @@ class TestContentFilterSqlInjectionTemplate:
     @pytest.mark.asyncio
     async def test_sql_always_block(self, sql_injection_guardrail, sentence, reason):
         request_data = {"messages": [{"role": "user", "content": sentence}]}
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await sql_injection_guardrail.apply_guardrail(
                 inputs={"texts": [sentence]},
                 request_data=request_data,
@@ -324,7 +342,7 @@ class TestContentFilterSqlInjectionTemplate:
         self, sql_injection_guardrail, sentence, reason
     ):
         request_data = {"messages": [{"role": "user", "content": sentence}]}
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await sql_injection_guardrail.apply_guardrail(
                 inputs={"texts": [sentence]},
                 request_data=request_data,
@@ -533,7 +551,7 @@ class TestContentFilterPromptInjectionTemplate:
     @pytest.mark.asyncio
     async def test_always_block(self, content_filter_guardrail, sentence, reason):
         request_data = {"messages": [{"role": "user", "content": sentence}]}
-        with pytest.raises(Exception):
+        with pytest.raises(HTTPException):
             await content_filter_guardrail.apply_guardrail(
                 inputs={"texts": [sentence]},
                 request_data=request_data,
