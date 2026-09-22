@@ -373,6 +373,14 @@ class PresidioPresidioConfigModelUserInterface(BaseModel):
 class PresidioConfigModel(PresidioPresidioConfigModelUserInterface):
     """Configuration parameters for the Presidio PII masking guardrail"""
 
+    presidio_phrase_allow_list: list[str] | None = Field(
+        default=None,
+        description="List of phrases Presidio should ignore when matched exactly after normalisation.",
+    )
+    presidio_skip_system_developer_message: bool | None = Field(
+        default=None,
+        description="If True, skip scanning system and developer messages for PII.",
+    )
     pii_entities_config: dict[PiiEntityType | str, PiiAction] | None = Field(
         default=None, description="Configuration for PII entity types and actions"
     )
@@ -1199,6 +1207,8 @@ class PresidioPerRequestConfig(BaseModel):
 
     language: str | None = None
     entities: list[PiiEntityType] | None = None
+    presidio_phrase_allow_list: list[str] | None = None
+    presidio_skip_system_developer_message: bool | None = None
 
 
 class ApplyGuardrailRequest(BaseModel):
